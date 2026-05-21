@@ -167,18 +167,9 @@ $slim = $db->user->findMany([
 $slim = $db->user->findMany([
     'select' => ['id' => true, 'email' => true],
 ]);
-// With the bundled PHPStan extension, the return type is narrowed to
-// list<array{id:int, email:string}> — PHPStan flags $row['name'] as missing.
-```
-
-Tehilim ships a PHPStan extension (`extension.neon`) that narrows `find*`
-return types based on a literal `select` argument. Picked up automatically
-via `phpstan/extension-installer`, or include it manually in your
-`phpstan.neon`:
-
-```yaml
-includes:
-    - vendor/polidog/tehilim/extension.neon
+// With the bundled PHPStan extension (see below), the return type is
+// narrowed to list<array{id:int, email:string}> — PHPStan flags
+// $row['name'] as missing.
 ```
 
 ## Many-to-many
@@ -357,6 +348,77 @@ $db->transaction(function ($tx) {
 
 The closure parameter is typed as the concrete generated client, so
 `$tx->user`, `$tx->post`, etc. are fully autocompleted and PHPStan-checked.
+
+## PHPStan extension
+
+Tehilim ships a PHPStan extension at the package root (`extension.neon`)
+that **narrows the return type of `findUnique` / `findFirst` / `findMany`**
+when the caller passes a literal `select` argument:
+
+```php
+$row = $db->user->findUnique([
+    'where'  => ['id' => 1],
+    'select' => ['email', 'name'],
+]);
+// PHPStan sees: array{email: string, name: string|null, id: int}|null
+// (PK is auto-included to match the runtime's behavior)
+
+echo $row['email'];   // ✓
+echo $row['name'];    // ✓
+echo $row['age'];     // ✗ PHPStan error: not a key of the narrowed shape
+```
+
+### Setup
+
+**Recommended — automatic via `phpstan/extension-installer`:**
+
+```bash
+composer require --dev phpstan/extension-installer
+```
+
+The installer reads `extra.phpstan.includes` from every installed
+package's `composer.json` and wires up the extension. Nothing to add to
+your own `phpstan.neon`.
+
+**Manual — explicit include:**
+
+```yaml
+# phpstan.neon
+includes:
+    - vendor/polidog/tehilim/extension.neon
+```
+
+### How it works
+
+- Generated model clients declare `public const ?string PK = 'id';`
+  (or `null` for composite-PK models).
+- The extension reads that constant via native reflection and adds the
+  PK to the narrowed shape, matching the runtime's auto-include.
+- The narrowing only fires for **literal** `select` arguments — both
+  forms work:
+  ```php
+  ['select' => ['id', 'email']]                    // list shorthand
+  ['select' => ['id' => true, 'email' => true]]    // map form
+  ```
+  Dynamic arrays (`$select` built at runtime, or a partial union of
+  shapes) fall back to the unnarrowed `XxxRow` shape.
+- Keys not present in the row shape are skipped silently. Relation
+  names belong to `include`, not `select` — passing them here narrows
+  to nothing useful, just as the runtime ignores them.
+
+### Verifying it works
+
+Add an `assertType` in any test and run PHPStan over it:
+
+```php
+use function PHPStan\Testing\assertType;
+
+$row = $db->user->findUnique(['where' => ['id' => 1], 'select' => ['email']]);
+assertType('array{email: string, id: int}|null', $row);
+```
+
+PHPStan's own test suite for the extension lives at
+`tests/PHPStan/SelectNarrowingTest.php` if you want a reference.
 
 ## Status
 
