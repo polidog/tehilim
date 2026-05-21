@@ -399,11 +399,16 @@ benefit from one. Pick the strategy that matches your runtime:
 
 - **PHP-FPM / CLI** — use `PDO::ATTR_PERSISTENT`, or an out-of-process pooler
   like PgBouncer / ProxySQL, and hand the resulting PDO to
-  `TehilimClient::fromPdo($pdo)`.
-- **Swoole / RoadRunner / FrankenPHP worker** — keep one `TehilimClient` per
-  worker, call `flushCache()` at the end of each request, and either roll your
-  own pool or borrow one from `hyperf/db` and friends — then feed each
-  checked-out PDO into `fromPdo()`.
+  `TehilimClient::fromPdo($pdo)`. One PDO + one client per process is the
+  natural shape.
+- **Swoole / RoadRunner / FrankenPHP worker** — **build a fresh client per
+  request (or per coroutine): check out a PDO from your pool, wrap it with
+  `TehilimClient::fromPdo($pdo)`, and discard the client when the request
+  ends, returning the PDO to the pool.** Use `hyperf/db` or any other pool
+  implementation as the source. `BaseClient::driver` is `readonly`, so you
+  cannot keep one long-lived client per worker and hot-swap PDOs underneath
+  it. The request-scoped cache rides on the client, so it dies with the
+  request — no cross-request leakage.
 
 > **Caveat:** persistent connections are fast but they leak session state
 > (isolation level, session variables) across requests if you're not careful.

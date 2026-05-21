@@ -349,8 +349,8 @@ $db->transaction(function ($tx) {
 
 Tehilim はコネクションプールを内部で管理しません。PHP-FPM や CLI のように 1 リクエスト = 1 プロセスのモデルではプロセス内プールは効きにくく、長寿命ランタイム (Swoole / RoadRunner / FrankenPHP worker mode など) でしか意味を持たないためです。実運用では以下のいずれかを選んでください。
 
-- **PHP-FPM / CLI** — `PDO::ATTR_PERSISTENT` または PgBouncer / ProxySQL のような外部プーラを使い、`TehilimClient::fromPdo($pdo)` で渡す。
-- **Swoole / RoadRunner / FrankenPHP worker** — ワーカーごとに 1 つの `TehilimClient` を保持し、リクエストの終わりに `flushCache()` を呼ぶ。プールは自前で組むか `hyperf/db` などの既存実装を流用し、取り出した PDO を `fromPdo()` に渡す。
+- **PHP-FPM / CLI** — `PDO::ATTR_PERSISTENT` または PgBouncer / ProxySQL のような外部プーラを使い、`TehilimClient::fromPdo($pdo)` で渡す。プロセスごとに 1 PDO + 1 client が素直。
+- **Swoole / RoadRunner / FrankenPHP worker** — **リクエスト(またはコルーチン)ごとに pool から PDO を借りて `TehilimClient::fromPdo($pdo)` で client を作り、リクエスト終了時に PDO を返却して client を捨てる**。プール本体は `hyperf/db` などの既存実装を流用しても自前で組んでもよい。`BaseClient::driver` は readonly なので、ワーカーで client を使い回して PDO だけ差し替える運用はできません。リクエストスコープキャッシュも client と一緒に破棄されるので、ワーカー間で汚染しません。
 
 > **注意:** persistent connection は速い反面、トランザクションの分離レベルなどセッション状態が次のリクエストへ漏れる罠があります。Tehilim は `SET SESSION` を発行せず、必ずトランザクションスコープの `SET TRANSACTION` を使うので、上で書いた分離レベル API は persistent でも安全です。逆にアプリ側で `SET SESSION` を発行している場合は、Tehilim から見えない汚染源になり得るので注意してください。
 
