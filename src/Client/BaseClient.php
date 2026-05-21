@@ -12,13 +12,14 @@ abstract class BaseClient
     /** @var array<string, BaseModelClient> */
     private array $clients = [];
 
-    private ?RequestCache $cache = null;
+    private readonly RequestCache $cache;
 
     /** @var (\Closure(string, string, callable(): mixed): mixed)|null */
     private ?\Closure $profiler = null;
 
     public function __construct(public readonly Driver $driver)
     {
+        $this->cache = new RequestCache();
     }
 
     /**
@@ -43,29 +44,19 @@ abstract class BaseClient
     }
 
     /**
-     * Enable request-scoped memoization of read calls (findUnique / findFirst
-     * / findMany / count). Writes flush the entire cache. Off by default.
+     * Request-scoped memoization store. Reads opt in per-call via
+     * `$model->cached()->findX(...)`; any write through this client flushes
+     * the entire store. The instance is created once per BaseClient and
+     * lives until the client is discarded — typically one HTTP request.
      */
-    public function enableCache(): static
+    public function cache(): RequestCache
     {
-        $this->cache ??= new RequestCache();
-        return $this;
-    }
-
-    public function disableCache(): static
-    {
-        $this->cache = null;
-        return $this;
+        return $this->cache;
     }
 
     public function flushCache(): void
     {
-        $this->cache?->flush();
-    }
-
-    public function cache(): ?RequestCache
-    {
-        return $this->cache;
+        $this->cache->flush();
     }
 
     /**
