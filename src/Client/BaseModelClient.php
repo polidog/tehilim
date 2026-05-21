@@ -14,6 +14,13 @@ use Polidog\Tehilim\Query\WhereCompiler;
  */
 abstract class BaseModelClient
 {
+    /**
+     * Single-column primary key name, declared by generated subclasses so the
+     * PHPStan extension can narrow find* return types when `select` is used.
+     * Composite primary keys leave this null and skip PK auto-inclusion.
+     */
+    public const ?string PK = null;
+
     private readonly WhereCompiler $whereCompiler;
     protected ?BaseClient $root = null;
 

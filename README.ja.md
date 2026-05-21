@@ -149,6 +149,15 @@ $posts = $db->post->findMany([
 $slim = $db->user->findMany([
     'select' => ['id' => true, 'email' => true],
 ]);
+// 同梱の PHPStan 拡張により戻り値型も narrow される:
+// list<array{id:int, email:string}> — $row['name'] は PHPStan が怒る
+```
+
+Tehilim には PHPStan 拡張 (`extension.neon`) が同梱されています。リテラルの `select` 引数を見て `find*` の戻り値型を絞り込みます。`phpstan/extension-installer` が入っていれば自動で取り込まれます。なければ `phpstan.neon` に手動 include:
+
+```yaml
+includes:
+    - vendor/polidog/tehilim/extension.neon
 ```
 
 ## Many-to-many

@@ -163,6 +163,18 @@ $posts = $db->post->findMany([
 $slim = $db->user->findMany([
     'select' => ['id' => true, 'email' => true],
 ]);
+// With the bundled PHPStan extension, the return type is narrowed:
+// list<array{id:int, email:string}> — PHPStan flags $row['name'] as missing.
+```
+
+Tehilim ships a PHPStan extension (`extension.neon`) that narrows `find*`
+return types based on a literal `select` argument. Picked up automatically
+via `phpstan/extension-installer`, or include it manually in your
+`phpstan.neon`:
+
+```yaml
+includes:
+    - vendor/polidog/tehilim/extension.neon
 ```
 
 ## Many-to-many

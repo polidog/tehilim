@@ -158,6 +158,8 @@ use Polidog\\Tehilim\\Client\\BaseModelClient;{$extraImports}
  */
 final class {$name}Client extends BaseModelClient
 {
+    public const ?string PK = {$primaryConst};
+
     protected function table(): string
     {
         return '{$table}';

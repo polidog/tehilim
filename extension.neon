@@ -1,0 +1,5 @@
+services:
+    -
+        class: Polidog\Tehilim\PHPStan\FindSelectReturnTypeExtension
+        tags:
+            - phpstan.broker.dynamicMethodReturnTypeExtension
