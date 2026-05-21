@@ -69,6 +69,17 @@ abstract class BaseModelClient
      */
     protected function doFindMany(array $args = []): array
     {
+        $cache = $this->root?->cache();
+        $cacheKey = null;
+        if ($cache !== null) {
+            $cacheKey = $this->cacheKey('findMany', $args);
+            if ($cache->has($cacheKey)) {
+                /** @var list<array<string,mixed>> $hit */
+                $hit = $cache->get($cacheKey);
+                return $hit;
+            }
+        }
+
         $select = $this->resolveSelect($args['select'] ?? null);
 
         [$whereSql, $params] = $this->compileWhere($args['where'] ?? []);
@@ -104,6 +115,10 @@ abstract class BaseModelClient
             $out = $this->attachIncludes($out, $include);
         }
 
+        if ($cache !== null && $cacheKey !== null) {
+            $cache->set($cacheKey, $out);
+        }
+
         return $out;
     }
 
@@ -113,6 +128,7 @@ abstract class BaseModelClient
      */
     protected function doCreate(array $args): array
     {
+        $this->root?->flushCache();
         $data = $args['data'];
         $types = $this->columnTypes();
         $bound = [];
@@ -136,6 +152,7 @@ abstract class BaseModelClient
      */
     protected function doUpdate(array $args): array
     {
+        $this->root?->flushCache();
         $where = $args['where'];
         $data = $args['data'];
         $types = $this->columnTypes();
@@ -174,6 +191,7 @@ abstract class BaseModelClient
      */
     protected function doDelete(array $args): array
     {
+        $this->root?->flushCache();
         $row = $this->doFindFirst(['where' => $args['where']]);
         if ($row === null) {
             throw new \RuntimeException('Row to delete not found');
@@ -197,6 +215,7 @@ abstract class BaseModelClient
      */
     protected function doUpsert(array $args): array
     {
+        $this->root?->flushCache();
         $existing = $this->doFindFirst(['where' => $args['where']]);
         if ($existing !== null) {
             return $this->doUpdate(['where' => $args['where'], 'data' => $args['update']]);
@@ -210,6 +229,7 @@ abstract class BaseModelClient
      */
     protected function doCreateMany(array $args): array
     {
+        $this->root?->flushCache();
         $rows = $args['data'];
         if ($rows === []) {
             return ['count' => 0];
@@ -247,6 +267,7 @@ abstract class BaseModelClient
      */
     protected function doUpdateMany(array $args): array
     {
+        $this->root?->flushCache();
         $where = $args['where'] ?? [];
         $data = $args['data'];
         if ($data === []) {
@@ -282,6 +303,7 @@ abstract class BaseModelClient
      */
     protected function doDeleteMany(array $args = []): array
     {
+        $this->root?->flushCache();
         [$whereSql, $params] = $this->compileWhere($args['where'] ?? []);
         $sql = sprintf(
             'DELETE FROM %s WHERE %s',
@@ -298,6 +320,15 @@ abstract class BaseModelClient
      */
     protected function doCount(array $args = []): int
     {
+        $cache = $this->root?->cache();
+        $cacheKey = null;
+        if ($cache !== null) {
+            $cacheKey = $this->cacheKey('count', $args);
+            if ($cache->has($cacheKey)) {
+                return (int) $cache->get($cacheKey);
+            }
+        }
+
         [$whereSql, $params] = $this->compileWhere($args['where'] ?? []);
         $sql = sprintf(
             'SELECT COUNT(*) AS c FROM %s WHERE %s',
@@ -307,7 +338,12 @@ abstract class BaseModelClient
         $stmt = $this->driver->pdo()->prepare($sql);
         $stmt->execute($params);
         $row = $stmt->fetch();
-        return (int) ($row['c'] ?? 0);
+        $count = (int) ($row['c'] ?? 0);
+
+        if ($cache !== null && $cacheKey !== null) {
+            $cache->set($cacheKey, $count);
+        }
+        return $count;
     }
 
     /**
@@ -407,6 +443,14 @@ abstract class BaseModelClient
     private function compileWhere(array $where): array
     {
         return $this->whereCompiler->compile($where, $this->driver, $this->columnTypes());
+    }
+
+    /**
+     * @param array<string,mixed> $args
+     */
+    private function cacheKey(string $op, array $args): string
+    {
+        return $this->table() . ':' . $op . ':' . md5(serialize($args));
     }
 
     /**

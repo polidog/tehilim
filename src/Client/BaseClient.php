@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Polidog\Tehilim\Client;
 
+use Polidog\Tehilim\Cache\RequestCache;
 use Polidog\Tehilim\Driver\Driver;
 
 abstract class BaseClient
@@ -11,8 +12,36 @@ abstract class BaseClient
     /** @var array<string, BaseModelClient> */
     private array $clients = [];
 
+    private ?RequestCache $cache = null;
+
     public function __construct(public readonly Driver $driver)
     {
+    }
+
+    /**
+     * Enable request-scoped memoization of read calls (findUnique / findFirst
+     * / findMany / count). Writes flush the entire cache. Off by default.
+     */
+    public function enableCache(): static
+    {
+        $this->cache ??= new RequestCache();
+        return $this;
+    }
+
+    public function disableCache(): static
+    {
+        $this->cache = null;
+        return $this;
+    }
+
+    public function flushCache(): void
+    {
+        $this->cache?->flush();
+    }
+
+    public function cache(): ?RequestCache
+    {
+        return $this->cache;
     }
 
     /**

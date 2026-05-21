@@ -217,6 +217,37 @@ $db->user->upsert([
 ]);  // returns the resulting row
 ```
 
+## Request-scoped cache
+
+Opt-in memoization for read calls (`findUnique` / `findFirst` / `findMany`
+/ `count`). Any write (`create` / `update` / `delete` / `upsert` /
+`createMany` / `updateMany` / `deleteMany`) **flushes the entire cache
+before executing**, so a read-write-read pattern inside the same request
+sees the update.
+
+```php
+$db = TehilimClient::fromPdo($pdo)->enableCache();
+
+// Both reads hit the DB once total
+$me = $db->user->findUnique(['where' => ['id' => $uid]]);   // miss → store
+$me = $db->user->findUnique(['where' => ['id' => $uid]]);   // hit
+
+$db->user->update(['where' => ['id' => $uid], 'data' => ['name' => 'X']]);
+// cache is now empty; the next read goes back to the DB
+
+$db->cache()?->hits();      // observability
+$db->flushCache();          // drop manually if you change rows out-of-band
+$db->disableCache();
+```
+
+The cache is scoped to a single `TehilimClient` instance — it's just an
+in-memory array, no TTL, no cross-request sharing. Build a fresh client
+per HTTP request (or whatever your unit of work is) and the cache lives
+and dies with it. Inspired by Relayer's `CachingDatabase`.
+
+Cache keys are derived from `serialize($args)`, so query args must be
+serializable.
+
 ## Transactions
 
 `transaction()` runs the callback inside a transaction, commits on success,
@@ -266,6 +297,7 @@ v0.1 — usable for prototyping and small apps. Implemented:
 - `@@id` / `@@unique` composite keys
 - `createMany` / `updateMany` / `deleteMany` / `upsert`
 - `transaction()` with nested SAVEPOINTs and `Rollback`
+- Opt-in request-scoped cache (auto-flush on writes)
 - File-based migration history (`migrate dev` / `deploy` / `status` / `reset`)
 - SQLite, MySQL/MariaDB, PostgreSQL drivers
 
