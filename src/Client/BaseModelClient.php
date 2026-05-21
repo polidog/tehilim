@@ -73,7 +73,7 @@ abstract class BaseModelClient
      */
     protected function doFindUnique(array $args): ?array
     {
-        return $this->profile('findUnique', fn (): ?array => $this->doFindFirst($args));
+        return $this->findOneCached('findUnique', $args);
     }
 
     /**
@@ -82,10 +82,36 @@ abstract class BaseModelClient
      */
     protected function doFindFirst(array $args): ?array
     {
-        return $this->profile('findFirst', function () use ($args): ?array {
+        return $this->findOneCached('findFirst', $args);
+    }
+
+    /**
+     * Shared core for doFindUnique / doFindFirst: cache lookup, then a
+     * single profile frame for $op, then take=1 + execFindMany. Avoids the
+     * nested findUnique → findFirst → findMany frame stack the previous
+     * implementation produced.
+     *
+     * @param array<string,mixed> $args
+     * @return array<string,mixed>|null
+     */
+    private function findOneCached(string $op, array $args): ?array
+    {
+        $cache = $this->root?->cache();
+        $cacheKey = $cache !== null ? $this->cacheKey($op, $args) : null;
+        if ($cache !== null && $cacheKey !== null && $cache->has($cacheKey)) {
+            /** @var array<string,mixed>|null $hit */
+            $hit = $cache->get($cacheKey);
+            return $hit;
+        }
+
+        return $this->profile($op, function () use ($args, $cache, $cacheKey): ?array {
             $args['take'] = 1;
-            $rows = $this->doFindMany($args);
-            return $rows[0] ?? null;
+            $rows = $this->execFindMany($args);
+            $row = $rows[0] ?? null;
+            if ($cache !== null && $cacheKey !== null) {
+                $cache->set($cacheKey, $row);
+            }
+            return $row;
         });
     }
 

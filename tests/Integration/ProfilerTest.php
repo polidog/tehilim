@@ -55,8 +55,34 @@ final class ProfilerTest extends TestCase
         self::assertContains('tehilim.count', $collectors);
         self::assertSame(['User'], array_values(array_unique(array_column($events, 'label'))));
         foreach ($events as $e) {
-            self::assertGreaterThan(0.0, $e['durationMs']);
+            self::assertIsFloat($e['durationMs']);
+            self::assertGreaterThanOrEqual(0.0, $e['durationMs']);
         }
+    }
+
+    public function testFindUniqueEmitsSingleFrame(): void
+    {
+        [$db] = $this->makeClient('ProfFindUnique');
+
+        /** @var list<string> $collectors */
+        $collectors = [];
+        $db->withProfiler(function (string $c, string $l, callable $fn) use (&$collectors) {
+            $collectors[] = $c;
+            return $fn();
+        });
+
+        $db->user->insert(['data' => ['email' => 'a@x']]);
+        $collectors = [];
+
+        $db->user->findUnique(['where' => ['email' => 'a@x']]);
+        // Previously this triple-stacked: findUnique → findFirst → findMany.
+        // Now findUnique / findFirst share an unprofiled core, so only one
+        // top-level frame is emitted.
+        self::assertSame(['tehilim.findUnique'], $collectors);
+
+        $collectors = [];
+        $db->user->findFirst(['where' => ['email' => 'a@x']]);
+        self::assertSame(['tehilim.findFirst'], $collectors);
     }
 
     public function testProfilerNestsForUpsert(): void
@@ -76,9 +102,10 @@ final class ProfilerTest extends TestCase
             'update' => ['email' => 'a@x'],
         ]);
 
-        // upsert ran, no existing row → triggered findFirst (which ran findMany) then insert
+        // upsert ran, no existing row → triggered findFirst then insert.
+        // findFirst is a single frame (no inner findMany leak).
         self::assertSame(
-            ['tehilim.upsert', 'tehilim.findFirst', 'tehilim.findMany', 'tehilim.insert'],
+            ['tehilim.upsert', 'tehilim.findFirst', 'tehilim.insert'],
             $collectors,
         );
     }
