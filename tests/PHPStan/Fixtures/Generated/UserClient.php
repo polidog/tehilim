@@ -13,7 +13,7 @@ use Polidog\Tehilim\Client\BaseModelClient;
  * @phpstan-type UserRow array{id: int, email: string, name: string|null, age: int|null}
  * @phpstan-type UserWhereUnique array{id?: int, email?: string}
  * @phpstan-type UserWhereInput array<string,mixed>
- * @phpstan-type UserSelect array{id?: bool, email?: bool, name?: bool, age?: bool}
+ * @phpstan-type UserSelect array{id?: bool, email?: bool, name?: bool, age?: bool}|list<'id'|'email'|'name'|'age'>
  */
 final class UserClient extends BaseModelClient
 {

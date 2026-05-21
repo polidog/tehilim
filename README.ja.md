@@ -149,6 +149,10 @@ $posts = $db->post->findMany([
 $slim = $db->user->findMany([
     'select' => ['id' => true, 'email' => true],
 ]);
+// リスト形式の省略記法も同じ意味:
+$slim = $db->user->findMany([
+    'select' => ['id', 'email'],
+]);
 // 同梱の PHPStan 拡張により戻り値型も narrow される:
 // list<array{id:int, email:string}> — $row['name'] は PHPStan が怒る
 ```

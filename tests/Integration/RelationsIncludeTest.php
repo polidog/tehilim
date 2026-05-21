@@ -146,6 +146,13 @@ TXT);
         self::assertSame(['email' => 'a@x', 'id' => 1], array_intersect_key($rows[0], ['email' => 1, 'id' => 1]));
         self::assertArrayNotHasKey('name', $rows[0]);
         self::assertArrayNotHasKey('age',  $rows[0]);
+
+        // List shorthand: equivalent to ['email' => true]
+        $rowsShort = $db->user->findMany([
+            'select'  => ['email'],
+            'orderBy' => ['id' => 'asc'],
+        ]);
+        self::assertSame($rows, $rowsShort);
     }
 
     private function removeDir(string $dir): void

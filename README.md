@@ -163,6 +163,10 @@ $posts = $db->post->findMany([
 $slim = $db->user->findMany([
     'select' => ['id' => true, 'email' => true],
 ]);
+// Shorthand list form — same meaning:
+$slim = $db->user->findMany([
+    'select' => ['id', 'email'],
+]);
 // With the bundled PHPStan extension, the return type is narrowed:
 // list<array{id:int, email:string}> — PHPStan flags $row['name'] as missing.
 ```

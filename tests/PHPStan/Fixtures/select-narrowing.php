@@ -59,3 +59,29 @@ function allFalseFallsBack(UserClient $client): void
     ]);
     assertType('array{id: int, email: string, name: string|null, age: int|null}|null', $row);
 }
+
+function listFormFindUnique(UserClient $client): void
+{
+    // Shorthand list form — same narrowing as map form
+    $row = $client->findUnique([
+        'where'  => ['id' => 1],
+        'select' => ['email', 'name'],
+    ]);
+    assertType('array{email: string, name: string|null, id: int}|null', $row);
+}
+
+function listFormFindMany(UserClient $client): void
+{
+    $rows = $client->findMany(['select' => ['email', 'age']]);
+    assertType('list<array{email: string, age: int|null, id: int}>', $rows);
+}
+
+function listFormIncludesPk(UserClient $client): void
+{
+    // PK explicit in list form: no duplicate
+    $row = $client->findUnique([
+        'where'  => ['id' => 1],
+        'select' => ['id', 'email'],
+    ]);
+    assertType('array{id: int, email: string}|null', $row);
+}

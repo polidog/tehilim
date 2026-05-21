@@ -442,14 +442,23 @@ PHP;
      */
     private function selectShape(Model $model, array $relations): string
     {
-        $parts = [];
+        $mapParts = [];
+        $literals = [];
         foreach ($model->scalarFields() as $f) {
-            $parts[] = $f->columnName() . '?: bool';
+            $col = $f->columnName();
+            $mapParts[] = $col . '?: bool';
+            $literals[] = var_export($col, true);
         }
         foreach ($relations as $name => $_info) {
-            $parts[] = $name . '?: bool';
+            $mapParts[] = $name . '?: bool';
+            $literals[] = var_export($name, true);
         }
-        return 'array{' . implode(', ', $parts) . '}';
+        $mapForm = 'array{' . implode(', ', $mapParts) . '}';
+        if ($literals === []) {
+            return $mapForm;
+        }
+        $listForm = 'list<' . implode('|', $literals) . '>';
+        return $mapForm . '|' . $listForm;
     }
 
     /**

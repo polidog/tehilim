@@ -676,7 +676,10 @@ abstract class BaseModelClient
     }
 
     /**
-     * @param array<string,bool>|null $select
+     * Accepts both shorthand list form (`['id', 'email']`) and map form
+     * (`['id' => true, 'email' => true]`). PK is auto-included.
+     *
+     * @param array<string,bool>|list<string>|null $select
      * @return list<string>
      */
     private function resolveSelect(?array $select): array
@@ -684,17 +687,27 @@ abstract class BaseModelClient
         if ($select === null) {
             return $this->columns();
         }
-        $picked = [];
         $valid = array_flip($this->columns());
-        foreach ($select as $col => $on) {
-            if (!$on) {
-                continue;
+        $picked = [];
+
+        if (array_is_list($select)) {
+            foreach ($select as $col) {
+                if (is_string($col) && isset($valid[$col])) {
+                    $picked[] = $col;
+                }
             }
-            if (!isset($valid[$col])) {
-                continue;
+        } else {
+            foreach ($select as $col => $on) {
+                if (!is_string($col) || !$on) {
+                    continue;
+                }
+                if (!isset($valid[$col])) {
+                    continue;
+                }
+                $picked[] = $col;
             }
-            $picked[] = $col;
         }
+
         if ($picked === []) {
             return $this->columns();
         }
