@@ -14,7 +14,7 @@ final class Options
      *
      * @return array{schema:string, extra:array<string,string>}
      */
-    public static function parse(array $args, string $defaultSchema = 'schema.tehilim'): array
+    public static function parse(array $args, string $defaultSchema = 'tehilim/schema.tehilim'): array
     {
         $schema = $defaultSchema;
         $extra = [];

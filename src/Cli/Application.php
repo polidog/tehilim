@@ -40,7 +40,7 @@ final class Application
 tehilim — schema-first PHP database toolkit
 
 Usage:
-  tehilim init [--schema <path>]            Create a starter schema.tehilim
+  tehilim init [--schema <path>]            Create a starter tehilim/schema.tehilim
   tehilim generate [--schema <path>]        Generate typed client from schema
   tehilim push [--schema <path>]            Sync schema to DB destructively (prototyping)
   tehilim migrate dev    --name <slug>      Diff schema, write a migration, apply it
@@ -48,7 +48,7 @@ Usage:
   tehilim migrate status                    Show applied / pending migrations
   tehilim migrate reset                     Drop tables + re-apply all (DEV ONLY)
 
-Default schema path: ./schema.tehilim
+Default schema path: ./tehilim/schema.tehilim
 
 TXT;
 
