@@ -48,7 +48,7 @@ Usage:
   tehilim migrate status                    Show applied / pending migrations
   tehilim migrate reset                     Drop tables + re-apply all (DEV ONLY)
 
-Default schema path: ./schema.tehilim
+Default schema path: ./tehilim/schema.tehilim
 
 TXT;
 
