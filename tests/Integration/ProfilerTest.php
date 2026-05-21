@@ -168,7 +168,7 @@ TXT);
 
         $outDir = $this->workDir . '/gen-' . strtolower($ns);
         (new Generator($schema, $outDir, $ns . '\\Gen'))->generate();
-        require_once $outDir . '/Model/UserClient.php';
+        require_once $outDir . '/Model/User.php';
         require_once $outDir . '/TehilimClient.php';
 
         $pdo = Config::pdo('sqlite::memory:');

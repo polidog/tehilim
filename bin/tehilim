@@ -1,9 +1,9 @@
 #!/usr/bin/env php
 <?php
 
-use Polidog\Tehilim\Cli\Application;
-
 declare(strict_types=1);
+
+use Polidog\Tehilim\Cli\Application;
 
 $candidates = [
     __DIR__ . '/../vendor/autoload.php',

@@ -33,7 +33,7 @@ final class Generator
         }
 
         foreach ($this->schema->models as $model) {
-            $path = $modelDir . '/' . $model->name . 'Client.php';
+            $path = $modelDir . '/' . $model->name . '.php';
             file_put_contents($path, $this->renderModelClient($model));
         }
 
@@ -50,7 +50,7 @@ final class Generator
         $uses = "use PDO;\nuse Polidog\\Tehilim\\Client\\BaseClient;\nuse Polidog\\Tehilim\\Config;\nuse Polidog\\Tehilim\\Driver\\Driver;\nuse Polidog\\Tehilim\\Driver\\Drivers;\n";
 
         foreach ($models as $m) {
-            $cls = $m->name . 'Client';
+            $cls = $m->name;
             $prop = lcfirst($m->name);
             $uses .= "use {$this->namespace}\\Model\\{$cls};\n";
             $properties .= "    public readonly {$cls} \${$prop};\n";
@@ -116,6 +116,7 @@ PHP;
         $relations = $this->resolveRelations($model);
 
         $imports = $this->renderTypeImports($relations);
+        $rowScalarShape = $this->rowScalarShape($model);
         $rowShape = $this->rowShape($model, $relations);
         $insertShape = $this->insertInputShape($model, $relations);
         $updateShape = $this->updateInputShape($model, $relations);
@@ -134,6 +135,7 @@ PHP;
         ));
 
         $primaryConst = $pkName === null ? 'null' : var_export($pkName, true);
+        $primaryKeyReturnType = $pkName === null ? '?string' : 'string';
 
         $relationsMethod = $this->renderRelationsMethod($relations);
 
@@ -149,7 +151,8 @@ namespace {$this->namespace}\\Model;
 use Polidog\\Tehilim\\Client\\BaseModelClient;{$extraImports}
 
 /**
-{$imports} * @phpstan-type {$name}Row {$rowShape}
+{$imports} * @phpstan-type {$name}RowScalar {$rowScalarShape}
+ * @phpstan-type {$name}Row {$rowShape}
  * @phpstan-type {$name}InsertInput {$insertShape}
  * @phpstan-type {$name}UpdateInput {$updateShape}
  * @phpstan-type {$name}WhereUnique {$whereUniqueShape}
@@ -158,7 +161,7 @@ use Polidog\\Tehilim\\Client\\BaseModelClient;{$extraImports}
  * @phpstan-type {$name}Include {$includeShape}
  * @phpstan-type {$name}Select {$selectShape}
  */
-final class {$name}Client extends BaseModelClient
+final class {$name} extends BaseModelClient
 {
     public const ?string PK = {$primaryConst};
 
@@ -167,7 +170,7 @@ final class {$name}Client extends BaseModelClient
         return '{$table}';
     }
 
-    protected function primaryKey(): ?string
+    protected function primaryKey(): {$primaryKeyReturnType}
     {
         return {$primaryConst};
     }
@@ -191,7 +194,7 @@ final class {$name}Client extends BaseModelClient
      */
     public function findUnique(array \$args): ?array
     {
-        return \$this->doFindUnique(\$args);
+        return \$this->castOptionalRow(\$this->doFindUnique(\$args));
     }
 
     /**
@@ -200,7 +203,7 @@ final class {$name}Client extends BaseModelClient
      */
     public function findFirst(array \$args = []): ?array
     {
-        return \$this->doFindFirst(\$args);
+        return \$this->castOptionalRow(\$this->doFindFirst(\$args));
     }
 
     /**
@@ -209,7 +212,7 @@ final class {$name}Client extends BaseModelClient
      */
     public function findMany(array \$args = []): array
     {
-        return \$this->doFindMany(\$args);
+        return \$this->castRows(\$this->doFindMany(\$args));
     }
 
     /**
@@ -218,7 +221,7 @@ final class {$name}Client extends BaseModelClient
      */
     public function insert(array \$args): array
     {
-        return \$this->doInsert(\$args);
+        return \$this->castRow(\$this->doInsert(\$args));
     }
 
     /**
@@ -227,7 +230,7 @@ final class {$name}Client extends BaseModelClient
      */
     public function update(array \$args): array
     {
-        return \$this->doUpdate(\$args);
+        return \$this->castRow(\$this->doUpdate(\$args));
     }
 
     /**
@@ -236,7 +239,7 @@ final class {$name}Client extends BaseModelClient
      */
     public function delete(array \$args): array
     {
-        return \$this->doDelete(\$args);
+        return \$this->castRow(\$this->doDelete(\$args));
     }
 
     /**
@@ -253,7 +256,7 @@ final class {$name}Client extends BaseModelClient
      */
     public function upsert(array \$args): array
     {
-        return \$this->doUpsert(\$args);
+        return \$this->castRow(\$this->doUpsert(\$args));
     }
 
     /**
@@ -281,6 +284,39 @@ final class {$name}Client extends BaseModelClient
     public function deleteMany(array \$args = []): array
     {
         return \$this->doDeleteMany(\$args);
+    }
+
+    /**
+     * @param array<string,mixed> \$row
+     * @return {$name}Row
+     */
+    private function castRow(array \$row): array
+    {
+        // DB row shape comes from PDO + columnTypes(); trusted to match {$name}Row.
+        /** @phpstan-ignore return.type */
+        return \$row;
+    }
+
+    /**
+     * @param array<string,mixed>|null \$row
+     * @return {$name}Row|null
+     */
+    private function castOptionalRow(?array \$row): ?array
+    {
+        // DB row shape comes from PDO + columnTypes(); trusted to match {$name}Row.
+        /** @phpstan-ignore return.type */
+        return \$row;
+    }
+
+    /**
+     * @param list<array<string,mixed>> \$rows
+     * @return list<{$name}Row>
+     */
+    private function castRows(array \$rows): array
+    {
+        // DB row shape comes from PDO + columnTypes(); trusted to match {$name}Row.
+        /** @phpstan-ignore return.type */
+        return \$rows;
     }
 }
 
@@ -321,12 +357,25 @@ PHP;
                 continue;
             }
             $seen[$target] = true;
-            $fqcn = $this->namespace . '\Model\\' . $target . 'Client';
-            $lines .= " * @phpstan-import-type {$target}Row from \\{$fqcn}\n";
+            $fqcn = $this->namespace . '\Model\\' . $target;
+            $lines .= " * @phpstan-import-type {$target}RowScalar from \\{$fqcn}\n";
             $lines .= " * @phpstan-import-type {$target}WhereUnique from \\{$fqcn}\n";
         }
 
         return $lines;
+    }
+
+    private function rowScalarShape(Model $model): string
+    {
+        $parts = [];
+        foreach ($model->scalarFields() as $f) {
+            $parts[] = "{$f->columnName()}: " . TypeFormatter::phpType($f);
+        }
+        if ($parts === []) {
+            return 'array{}';
+        }
+
+        return 'array{' . implode(', ', $parts) . '}';
     }
 
     /**
@@ -340,8 +389,8 @@ PHP;
         }
         foreach ($relations as $name => $info) {
             $rel = $info['relation'];
-            $relatedRow = $rel->target . 'Row';
-            $type = $rel->isList() ? "list<{$relatedRow}>" : "{$relatedRow}|null";
+            $relatedScalar = $rel->target . 'RowScalar';
+            $type = $rel->isList() ? "list<{$relatedScalar}>" : "{$relatedScalar}|null";
             $parts[] = "{$name}?: " . $type;
         }
 

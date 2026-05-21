@@ -8,18 +8,19 @@ use Polidog\Tehilim\Client\BaseModelClient;
 use Polidog\Tehilim\Client\Relation;
 
 /**
- * @phpstan-import-type PostRow from \Example\Blog\Generated\Model\PostClient
- * @phpstan-import-type PostWhereUnique from \Example\Blog\Generated\Model\PostClient
- * @phpstan-type UserRow array{id: int, email: string, name: string|null, createdAt: \DateTimeImmutable, posts?: list<PostRow>}
+ * @phpstan-import-type PostRowScalar from \Example\Blog\Generated\Model\Post
+ * @phpstan-import-type PostWhereUnique from \Example\Blog\Generated\Model\Post
+ * @phpstan-type UserRowScalar array{id: int, email: string, name: string|null, createdAt: \DateTimeImmutable}
+ * @phpstan-type UserRow array{id: int, email: string, name: string|null, createdAt: \DateTimeImmutable, posts?: list<PostRowScalar>}
  * @phpstan-type UserInsertInput array{id?: int, email: string, name?: string|null, createdAt?: \DateTimeImmutable}
  * @phpstan-type UserUpdateInput array{id?: int, email?: string, name?: string|null, createdAt?: \DateTimeImmutable}
  * @phpstan-type UserWhereUnique array{id?: int, email?: string}
  * @phpstan-type UserWhereInput array<string,mixed>
  * @phpstan-type UserOrderBy array<string,'asc'|'desc'>|list<array<string,'asc'|'desc'>>
  * @phpstan-type UserInclude array{posts?: bool|array{where?: array<string,mixed>, take?: int, skip?: int}}
- * @phpstan-type UserSelect array{id?: bool, email?: bool, name?: bool, createdAt?: bool, posts?: bool}|list<'id'|'email'|'name'|'createdAt'|'posts'>
+ * @phpstan-type UserSelect array{id?: bool, email?: bool, name?: bool, createdAt?: bool}|list<'id'|'email'|'name'|'createdAt'>
  */
-final class UserClient extends BaseModelClient
+final class User extends BaseModelClient
 {
     public const ?string PK = 'id';
 
@@ -28,7 +29,7 @@ final class UserClient extends BaseModelClient
         return 'User';
     }
 
-    protected function primaryKey(): ?string
+    protected function primaryKey(): string
     {
         return 'id';
     }
@@ -60,7 +61,7 @@ final class UserClient extends BaseModelClient
      */
     public function findUnique(array $args): ?array
     {
-        return $this->doFindUnique($args);
+        return $this->castOptionalRow($this->doFindUnique($args));
     }
 
     /**
@@ -69,7 +70,7 @@ final class UserClient extends BaseModelClient
      */
     public function findFirst(array $args = []): ?array
     {
-        return $this->doFindFirst($args);
+        return $this->castOptionalRow($this->doFindFirst($args));
     }
 
     /**
@@ -78,7 +79,7 @@ final class UserClient extends BaseModelClient
      */
     public function findMany(array $args = []): array
     {
-        return $this->doFindMany($args);
+        return $this->castRows($this->doFindMany($args));
     }
 
     /**
@@ -87,7 +88,7 @@ final class UserClient extends BaseModelClient
      */
     public function insert(array $args): array
     {
-        return $this->doInsert($args);
+        return $this->castRow($this->doInsert($args));
     }
 
     /**
@@ -96,7 +97,7 @@ final class UserClient extends BaseModelClient
      */
     public function update(array $args): array
     {
-        return $this->doUpdate($args);
+        return $this->castRow($this->doUpdate($args));
     }
 
     /**
@@ -105,7 +106,7 @@ final class UserClient extends BaseModelClient
      */
     public function delete(array $args): array
     {
-        return $this->doDelete($args);
+        return $this->castRow($this->doDelete($args));
     }
 
     /**
@@ -122,7 +123,7 @@ final class UserClient extends BaseModelClient
      */
     public function upsert(array $args): array
     {
-        return $this->doUpsert($args);
+        return $this->castRow($this->doUpsert($args));
     }
 
     /**
@@ -150,5 +151,38 @@ final class UserClient extends BaseModelClient
     public function deleteMany(array $args = []): array
     {
         return $this->doDeleteMany($args);
+    }
+
+    /**
+     * @param array<string,mixed> $row
+     * @return UserRow
+     */
+    private function castRow(array $row): array
+    {
+        // DB row shape comes from PDO + columnTypes(); trusted to match UserRow.
+        /** @phpstan-ignore return.type */
+        return $row;
+    }
+
+    /**
+     * @param array<string,mixed>|null $row
+     * @return UserRow|null
+     */
+    private function castOptionalRow(?array $row): ?array
+    {
+        // DB row shape comes from PDO + columnTypes(); trusted to match UserRow.
+        /** @phpstan-ignore return.type */
+        return $row;
+    }
+
+    /**
+     * @param list<array<string,mixed>> $rows
+     * @return list<UserRow>
+     */
+    private function castRows(array $rows): array
+    {
+        // DB row shape comes from PDO + columnTypes(); trusted to match UserRow.
+        /** @phpstan-ignore return.type */
+        return $rows;
     }
 }

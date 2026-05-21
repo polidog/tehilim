@@ -43,7 +43,7 @@ TXT);
 
         $outDir = $this->workDir . '/gen';
         (new Generator($schema, $outDir, 'CompPk\\Gen'))->generate();
-        require $outDir . '/Model/EnrollmentClient.php';
+        require $outDir . '/Model/Enrollment.php';
         require $outDir . '/TehilimClient.php';
 
         $driver = Drivers::forPdo(Config::pdo('sqlite::memory:'));
@@ -98,7 +98,7 @@ TXT);
 
         $outDir = $this->workDir . '/gen';
         (new Generator($schema, $outDir, 'CompUq\\Gen'))->generate();
-        require $outDir . '/Model/MemberClient.php';
+        require $outDir . '/Model/Member.php';
         require $outDir . '/TehilimClient.php';
 
         $driver = Drivers::forPdo(Config::pdo('sqlite::memory:'));

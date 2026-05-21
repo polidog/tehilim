@@ -8,18 +8,19 @@ use Polidog\Tehilim\Client\BaseModelClient;
 use Polidog\Tehilim\Client\Relation;
 
 /**
- * @phpstan-import-type UserRow from \Example\Blog\Generated\Model\UserClient
- * @phpstan-import-type UserWhereUnique from \Example\Blog\Generated\Model\UserClient
- * @phpstan-type PostRow array{id: int, title: string, body: string|null, published: bool, authorId: int, createdAt: \DateTimeImmutable, author?: UserRow|null}
+ * @phpstan-import-type UserRowScalar from \Example\Blog\Generated\Model\User
+ * @phpstan-import-type UserWhereUnique from \Example\Blog\Generated\Model\User
+ * @phpstan-type PostRowScalar array{id: int, title: string, body: string|null, published: bool, authorId: int, createdAt: \DateTimeImmutable}
+ * @phpstan-type PostRow array{id: int, title: string, body: string|null, published: bool, authorId: int, createdAt: \DateTimeImmutable, author?: UserRowScalar|null}
  * @phpstan-type PostInsertInput array{id?: int, title: string, body?: string|null, published?: bool, authorId: int, createdAt?: \DateTimeImmutable}
  * @phpstan-type PostUpdateInput array{id?: int, title?: string, body?: string|null, published?: bool, authorId?: int, createdAt?: \DateTimeImmutable}
  * @phpstan-type PostWhereUnique array{id?: int}
  * @phpstan-type PostWhereInput array<string,mixed>
  * @phpstan-type PostOrderBy array<string,'asc'|'desc'>|list<array<string,'asc'|'desc'>>
  * @phpstan-type PostInclude array{author?: bool|array{where?: array<string,mixed>, take?: int, skip?: int}}
- * @phpstan-type PostSelect array{id?: bool, title?: bool, body?: bool, published?: bool, authorId?: bool, createdAt?: bool, author?: bool}|list<'id'|'title'|'body'|'published'|'authorId'|'createdAt'|'author'>
+ * @phpstan-type PostSelect array{id?: bool, title?: bool, body?: bool, published?: bool, authorId?: bool, createdAt?: bool}|list<'id'|'title'|'body'|'published'|'authorId'|'createdAt'>
  */
-final class PostClient extends BaseModelClient
+final class Post extends BaseModelClient
 {
     public const ?string PK = 'id';
 
@@ -28,7 +29,7 @@ final class PostClient extends BaseModelClient
         return 'Post';
     }
 
-    protected function primaryKey(): ?string
+    protected function primaryKey(): string
     {
         return 'id';
     }
@@ -60,7 +61,7 @@ final class PostClient extends BaseModelClient
      */
     public function findUnique(array $args): ?array
     {
-        return $this->doFindUnique($args);
+        return $this->castOptionalRow($this->doFindUnique($args));
     }
 
     /**
@@ -69,7 +70,7 @@ final class PostClient extends BaseModelClient
      */
     public function findFirst(array $args = []): ?array
     {
-        return $this->doFindFirst($args);
+        return $this->castOptionalRow($this->doFindFirst($args));
     }
 
     /**
@@ -78,7 +79,7 @@ final class PostClient extends BaseModelClient
      */
     public function findMany(array $args = []): array
     {
-        return $this->doFindMany($args);
+        return $this->castRows($this->doFindMany($args));
     }
 
     /**
@@ -87,7 +88,7 @@ final class PostClient extends BaseModelClient
      */
     public function insert(array $args): array
     {
-        return $this->doInsert($args);
+        return $this->castRow($this->doInsert($args));
     }
 
     /**
@@ -96,7 +97,7 @@ final class PostClient extends BaseModelClient
      */
     public function update(array $args): array
     {
-        return $this->doUpdate($args);
+        return $this->castRow($this->doUpdate($args));
     }
 
     /**
@@ -105,7 +106,7 @@ final class PostClient extends BaseModelClient
      */
     public function delete(array $args): array
     {
-        return $this->doDelete($args);
+        return $this->castRow($this->doDelete($args));
     }
 
     /**
@@ -122,7 +123,7 @@ final class PostClient extends BaseModelClient
      */
     public function upsert(array $args): array
     {
-        return $this->doUpsert($args);
+        return $this->castRow($this->doUpsert($args));
     }
 
     /**
@@ -150,5 +151,38 @@ final class PostClient extends BaseModelClient
     public function deleteMany(array $args = []): array
     {
         return $this->doDeleteMany($args);
+    }
+
+    /**
+     * @param array<string,mixed> $row
+     * @return PostRow
+     */
+    private function castRow(array $row): array
+    {
+        // DB row shape comes from PDO + columnTypes(); trusted to match PostRow.
+        /** @phpstan-ignore return.type */
+        return $row;
+    }
+
+    /**
+     * @param array<string,mixed>|null $row
+     * @return PostRow|null
+     */
+    private function castOptionalRow(?array $row): ?array
+    {
+        // DB row shape comes from PDO + columnTypes(); trusted to match PostRow.
+        /** @phpstan-ignore return.type */
+        return $row;
+    }
+
+    /**
+     * @param list<array<string,mixed>> $rows
+     * @return list<PostRow>
+     */
+    private function castRows(array $rows): array
+    {
+        // DB row shape comes from PDO + columnTypes(); trusted to match PostRow.
+        /** @phpstan-ignore return.type */
+        return $rows;
     }
 }

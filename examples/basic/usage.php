@@ -3,8 +3,8 @@
 declare(strict_types=1);
 
 require __DIR__ . '/../../vendor/autoload.php';
-require __DIR__ . '/generated/Model/UserClient.php';
-require __DIR__ . '/generated/Model/PostClient.php';
+require __DIR__ . '/generated/Model/User.php';
+require __DIR__ . '/generated/Model/Post.php';
 require __DIR__ . '/generated/TehilimClient.php';
 
 use Example\Blog\Generated\TehilimClient;

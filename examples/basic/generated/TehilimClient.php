@@ -9,20 +9,20 @@ use Polidog\Tehilim\Client\BaseClient;
 use Polidog\Tehilim\Config;
 use Polidog\Tehilim\Driver\Driver;
 use Polidog\Tehilim\Driver\Drivers;
-use Example\Blog\Generated\Model\UserClient;
-use Example\Blog\Generated\Model\PostClient;
+use Example\Blog\Generated\Model\User;
+use Example\Blog\Generated\Model\Post;
 
 final class TehilimClient extends BaseClient
 {
-    public readonly UserClient $user;
-    public readonly PostClient $post;
+    public readonly User $user;
+    public readonly Post $post;
 
     public function __construct(Driver $driver)
     {
         parent::__construct($driver);
-        $this->user = new UserClient($driver);
+        $this->user = new User($driver);
         $this->registerModel('User', $this->user);
-        $this->post = new PostClient($driver);
+        $this->post = new Post($driver);
         $this->registerModel('Post', $this->post);
     }
 
