@@ -47,7 +47,7 @@ final class Generator
 
         $properties = '';
         $assigns = '';
-        $uses = "use PDO;\nuse Polidog\\Tehilim\\Client\\BaseClient;\nuse Polidog\\Tehilim\\Config;\nuse Polidog\\Tehilim\\Driver\\Driver;\nuse Polidog\\Tehilim\\Driver\\Drivers;\n";
+        $uses = "use PDO;\nuse Polidog\\Tehilim\\Client\\BaseClient;\nuse Polidog\\Tehilim\\Client\\IsolationLevel;\nuse Polidog\\Tehilim\\Config;\nuse Polidog\\Tehilim\\Driver\\Driver;\nuse Polidog\\Tehilim\\Driver\\Drivers;\n";
 
         foreach ($models as $m) {
             $cls = $m->name;
@@ -95,11 +95,13 @@ final class {$this->clientClass} extends BaseClient
     /**
      * @template T
      * @param callable(self): T \$fn
+     * @param ?IsolationLevel \$isolation isolation level for the top-level
+     *        transaction (driver-dependent); must be null on nested calls.
      * @return T|mixed
      */
-    public function transaction(callable \$fn): mixed
+    public function transaction(callable \$fn, ?IsolationLevel \$isolation = null): mixed
     {
-        return parent::transaction(\$fn);
+        return parent::transaction(\$fn, \$isolation);
     }
 }
 

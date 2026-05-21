@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Polidog\Tehilim\Driver;
 
 use PDO;
+use Polidog\Tehilim\Client\IsolationLevel;
 use Polidog\Tehilim\Migration\ColumnDef;
 
 final class MySqlDriver extends AbstractPdoDriver
@@ -12,6 +13,16 @@ final class MySqlDriver extends AbstractPdoDriver
     public function quoteIdent(string $name): string
     {
         return '`' . str_replace('`', '``', $name) . '`';
+    }
+
+    public function beginTransaction(?IsolationLevel $level = null): void
+    {
+        // MySQL: `SET TRANSACTION ISOLATION LEVEL ...` applies only to the
+        // next transaction, so it must be issued immediately before BEGIN.
+        if ($level !== null) {
+            $this->pdoInstance->exec('SET TRANSACTION ISOLATION LEVEL ' . $level->value);
+        }
+        $this->pdoInstance->beginTransaction();
     }
 
     public function listTables(): array

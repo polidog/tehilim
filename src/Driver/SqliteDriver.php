@@ -5,13 +5,29 @@ declare(strict_types=1);
 namespace Polidog\Tehilim\Driver;
 
 use PDO;
+use Polidog\Tehilim\Client\IsolationLevel;
 use Polidog\Tehilim\Migration\ColumnDef;
+use RuntimeException;
 
 final class SqliteDriver extends AbstractPdoDriver
 {
     public function quoteIdent(string $name): string
     {
         return '"' . str_replace('"', '""', $name) . '"';
+    }
+
+    public function beginTransaction(?IsolationLevel $level = null): void
+    {
+        // SQLite serializes write transactions and offers SERIALIZABLE-grade
+        // isolation only. Accept SERIALIZABLE as a no-op, reject anything
+        // else so callers don't get a silently weaker guarantee than they
+        // asked for.
+        if ($level !== null && $level !== IsolationLevel::Serializable) {
+            throw new RuntimeException(
+                'SQLite only supports IsolationLevel::Serializable.',
+            );
+        }
+        $this->pdoInstance->beginTransaction();
     }
 
     public function listTables(): array

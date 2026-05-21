@@ -5,12 +5,34 @@ declare(strict_types=1);
 namespace Polidog\Tehilim\Driver;
 
 use PDO;
+use Polidog\Tehilim\Client\IsolationLevel;
 use Polidog\Tehilim\Migration\ColumnDef;
 use Polidog\Tehilim\Migration\TableDef;
 
 interface Driver
 {
     public function pdo(): PDO;
+
+    /**
+     * Begin a top-level transaction, optionally setting its isolation level.
+     *
+     * Implementations must emit the driver-appropriate `SET TRANSACTION` /
+     * `BEGIN ... ISOLATION LEVEL` sequencing when $level is non-null. Drivers
+     * that cannot emit a corresponding statement at all (e.g. SQLite for
+     * anything other than SERIALIZABLE) must throw rather than fall back to
+     * a different level on the client side.
+     *
+     * Note: this contract is about what the driver sends — it does not
+     * promise the server will honor every level. PostgreSQL, for instance,
+     * accepts `READ UNCOMMITTED` and treats it as `READ COMMITTED` per the
+     * SQL standard; that is server-side behavior, not a driver downgrade.
+     *
+     * If begin succeeds it must leave the connection inside a clean
+     * transaction; if it throws, the connection must be left transaction-free
+     * (drivers are responsible for rolling back any half-opened transaction
+     * before propagating).
+     */
+    public function beginTransaction(?IsolationLevel $level = null): void;
 
     public function quoteIdent(string $name): string;
 

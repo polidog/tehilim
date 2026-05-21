@@ -365,6 +365,58 @@ $db->transaction(function ($tx) {
 The closure parameter is typed as the concrete generated client, so
 `$tx->user`, `$tx->post`, etc. are fully autocompleted and PHPStan-checked.
 
+### Isolation levels
+
+Top-level transactions accept an optional `IsolationLevel`. Nested calls
+inherit the outer transaction's isolation level, so passing one to a nested
+call raises `LogicException`.
+
+```php
+use Polidog\Tehilim\Client\IsolationLevel;
+
+$db->transaction(function ($tx) {
+    // ...
+}, IsolationLevel::Serializable);
+```
+
+Driver behavior:
+
+- **MySQL/MariaDB** — emits `SET TRANSACTION ISOLATION LEVEL ...` immediately
+  before `BEGIN`. All four levels are supported.
+- **PostgreSQL** — emits `SET TRANSACTION ISOLATION LEVEL ...` right after
+  `BEGIN`. Note that PostgreSQL silently maps `READ UNCOMMITTED` to
+  `READ COMMITTED` (per the SQL standard).
+- **SQLite** — only `SERIALIZABLE` is implementable. Anything else throws a
+  `RuntimeException` rather than silently giving you a weaker guarantee than
+  your production DB would.
+
+## Connection pooling
+
+Tehilim does not manage a connection pool of its own. The PHP-FPM / CLI model
+(one process per request) makes intra-process pooling pointless, and only
+long-lived runtimes (Swoole / RoadRunner / FrankenPHP worker mode) actually
+benefit from one. Pick the strategy that matches your runtime:
+
+- **PHP-FPM / CLI** — use `PDO::ATTR_PERSISTENT`, or an out-of-process pooler
+  like PgBouncer / ProxySQL, and hand the resulting PDO to
+  `TehilimClient::fromPdo($pdo)`. One PDO + one client per process is the
+  natural shape.
+- **Swoole / RoadRunner / FrankenPHP worker** — **build a fresh client per
+  request (or per coroutine): check out a PDO from your pool, wrap it with
+  `TehilimClient::fromPdo($pdo)`, and discard the client when the request
+  ends, returning the PDO to the pool.** Use `hyperf/db` or any other pool
+  implementation as the source. `BaseClient::driver` is `readonly`, so you
+  cannot keep one long-lived client per worker and hot-swap PDOs underneath
+  it. The request-scoped cache rides on the client, so it dies with the
+  request — no cross-request leakage.
+
+> **Caveat:** persistent connections are fast but they leak session state
+> (isolation level, session variables) across requests if you're not careful.
+> Tehilim itself never issues `SET SESSION` — the isolation API above only
+> uses transaction-scoped `SET TRANSACTION` — so it's safe to combine with
+> persistent connections. If your application code runs `SET SESSION`
+> anywhere, that becomes a pollution source Tehilim cannot see.
+
 ## Profiler hook
 
 Tehilim wraps each operation with an optional callable that has the same
@@ -493,9 +545,9 @@ v0.1 — usable for prototyping and small apps. Implemented:
 - File-based migration history (`migrate dev` / `deploy` / `status` / `reset`)
 - SQLite, MySQL/MariaDB, PostgreSQL drivers
 
-Not yet: raw SQL escape hatch (`$queryRaw` / `$executeRaw`), JSON path
-queries, full-text search, isolation-level control on transactions,
-schema introspection from an existing DB.
+Not yet: JSON path queries, full-text search, schema introspection from an
+existing DB. For raw SQL, drop down to PDO via `$client->driver->pdo()` (or
+`TehilimClient::fromPdo()`).
 
 ## License
 
