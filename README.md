@@ -70,11 +70,19 @@ vendor/bin/tehilim generate   # generate the typed client
 
 ## Using the generated client
 
+You bring your own PDO — Tehilim picks the right driver from
+`PDO::ATTR_DRIVER_NAME`. This lets you keep ownership of connection
+attributes (charset, timezone, persistent flag, statement cache, etc.) and
+makes it easy to share a PDO with the rest of your stack.
+
 ```php
 use App\Generated\TehilimClient;
-use Polidog\Tehilim\Config;
 
-$db = TehilimClient::connect(Config::fromUrl('sqlite:./dev.sqlite'));
+$pdo = new PDO('sqlite:./dev.sqlite');
+$db  = TehilimClient::fromPdo($pdo);
+
+// Or, if you'd rather have Tehilim parse a URL for you:
+// $db = TehilimClient::fromUrl('mysql://user:pass@host/db');
 
 $alice = $db->user->create(['data' => [
     'email' => 'alice@example.com',

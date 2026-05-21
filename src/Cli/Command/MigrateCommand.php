@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Polidog\Tehilim\Cli\Command;
 
 use Polidog\Tehilim\Config;
+use Polidog\Tehilim\Driver\Drivers;
 use Polidog\Tehilim\Migration\MigrationStore;
 use Polidog\Tehilim\Migration\Migrator;
 use Polidog\Tehilim\Schema\Parser;
@@ -91,7 +92,7 @@ final class MigrateCommand
         $ds = $schema->datasources[0] ?? throw new \RuntimeException("schema has no datasource block");
         $url = $ds->url() ?? throw new \RuntimeException("datasource '{$ds->name}' has no url");
         $resolvedUrl = $this->resolveUrl($url, $schemaPath);
-        $driver = Config::fromUrl($resolvedUrl)->driver();
+        $driver = Drivers::forPdo(Config::pdo($resolvedUrl));
 
         $migrationsDir = dirname(realpath($schemaPath) ?: $schemaPath) . '/migrations';
         $store = new MigrationStore($migrationsDir);

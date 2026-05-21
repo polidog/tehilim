@@ -7,6 +7,7 @@ namespace Polidog\Tehilim\Tests\Integration;
 use PHPUnit\Framework\TestCase;
 use Polidog\Tehilim\Client\Rollback;
 use Polidog\Tehilim\Config;
+use Polidog\Tehilim\Driver\Drivers;
 use Polidog\Tehilim\Generator\Generator;
 use Polidog\Tehilim\Migration\SchemaSync;
 use Polidog\Tehilim\Schema\Parser;
@@ -130,7 +131,7 @@ TXT);
         require $outDir . '/Model/UserClient.php';
         require $outDir . '/TehilimClient.php';
 
-        $driver = Config::fromUrl('sqlite::memory:')->driver();
+        $driver = Drivers::forPdo(Config::pdo('sqlite::memory:'));
         (new SchemaSync($driver, $schema))->push();
 
         $clientClass = $ns . '\\Gen\\TehilimClient';

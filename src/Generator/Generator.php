@@ -45,7 +45,7 @@ final class Generator
 
         $properties = '';
         $assigns = '';
-        $uses = "use Polidog\\Tehilim\\Client\\BaseClient;\nuse Polidog\\Tehilim\\Config;\nuse Polidog\\Tehilim\\Driver\\Driver;\n";
+        $uses = "use PDO;\nuse Polidog\\Tehilim\\Client\\BaseClient;\nuse Polidog\\Tehilim\\Config;\nuse Polidog\\Tehilim\\Driver\\Driver;\nuse Polidog\\Tehilim\\Driver\\Drivers;\n";
 
         foreach ($models as $m) {
             $cls = $m->name . 'Client';
@@ -72,9 +72,22 @@ final class {$this->clientClass} extends BaseClient
         parent::__construct(\$driver);
 {$assigns}    }
 
-    public static function connect(Config \$config): self
+    /**
+     * Build a client from an already-configured PDO instance.
+     * The driver is inferred from PDO::ATTR_DRIVER_NAME.
+     */
+    public static function fromPdo(PDO \$pdo): self
     {
-        return new self(\$config->driver());
+        return new self(Drivers::forPdo(\$pdo));
+    }
+
+    /**
+     * Convenience: parse a URL into a PDO then build the client.
+     * For full control over PDO attributes, use fromPdo() instead.
+     */
+    public static function fromUrl(string \$url, ?string \$user = null, ?string \$password = null): self
+    {
+        return self::fromPdo(Config::pdo(\$url, \$user, \$password));
     }
 
     /**

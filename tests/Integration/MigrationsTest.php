@@ -6,6 +6,7 @@ namespace Polidog\Tehilim\Tests\Integration;
 
 use PHPUnit\Framework\TestCase;
 use Polidog\Tehilim\Config;
+use Polidog\Tehilim\Driver\Drivers;
 use Polidog\Tehilim\Migration\MigrationStore;
 use Polidog\Tehilim\Migration\Migrator;
 use Polidog\Tehilim\Migration\SchemaDiff;
@@ -46,7 +47,7 @@ model User {
 }
 TXT);
 
-        $driver = Config::fromUrl('sqlite:' . $this->dbPath)->driver();
+        $driver = Drivers::forPdo(Config::pdo('sqlite:' . $this->dbPath));
         $migrator = new Migrator($driver, $store, $schemaPath);
 
         $r1 = $migrator->dev('init');
@@ -110,12 +111,12 @@ model Item {
 }
 TXT);
 
-        $driverA = Config::fromUrl('sqlite:' . $this->dbPath)->driver();
+        $driverA = Drivers::forPdo(Config::pdo('sqlite:' . $this->dbPath));
         $migratorA = new Migrator($driverA, $store, $schemaPath);
         $migratorA->dev('init');
 
         $otherDb = $this->workDir . '/prod.sqlite';
-        $driverB = Config::fromUrl('sqlite:' . $otherDb)->driver();
+        $driverB = Drivers::forPdo(Config::pdo('sqlite:' . $otherDb));
         $migratorB = new Migrator($driverB, $store, $schemaPath);
         $applied = $migratorB->deploy();
         self::assertCount(1, $applied);
@@ -140,7 +141,7 @@ model Note {
 }
 TXT);
 
-        $driver = Config::fromUrl('sqlite::memory:')->driver();
+        $driver = Drivers::forPdo(Config::pdo('sqlite::memory:'));
         $stmts = (new SchemaDiff())->diff($from, $to, $driver);
         self::assertCount(1, $stmts);
         self::assertStringContainsString('CREATE TABLE', $stmts[0]);

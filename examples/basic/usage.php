@@ -8,9 +8,13 @@ require __DIR__ . '/generated/Model/PostClient.php';
 require __DIR__ . '/generated/TehilimClient.php';
 
 use Example\Blog\Generated\TehilimClient;
-use Polidog\Tehilim\Config;
 
-$db = TehilimClient::connect(Config::fromUrl('sqlite:' . __DIR__ . '/blog.sqlite'));
+// Bring your own PDO — already-configured, persistent, custom charset, etc.
+$pdo = new PDO('sqlite:' . __DIR__ . '/blog.sqlite');
+$db = TehilimClient::fromPdo($pdo);
+
+// Or if you'd rather have Tehilim parse a URL for you:
+// $db = TehilimClient::fromUrl('sqlite:' . __DIR__ . '/blog.sqlite');
 
 $alice = $db->user->create(['data' => [
     'email' => 'alice@example.com',

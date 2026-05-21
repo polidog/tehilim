@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Polidog\Tehilim\Cli\Command;
 
 use Polidog\Tehilim\Config;
+use Polidog\Tehilim\Driver\Drivers;
 use Polidog\Tehilim\Migration\SchemaSync;
 use Polidog\Tehilim\Schema\Parser;
 
@@ -24,8 +25,7 @@ final class PushCommand
         $url = $ds->url() ?? throw new \RuntimeException("datasource '{$ds->name}' has no 'url'");
 
         $resolvedUrl = $this->resolveUrl($url, $opts['schema']);
-        $config = Config::fromUrl($resolvedUrl);
-        $driver = $config->driver();
+        $driver = Drivers::forPdo(Config::pdo($resolvedUrl));
 
         (new SchemaSync($driver, $schema))->push(drop: true);
 

@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Example\Blog\Generated;
 
+use PDO;
 use Polidog\Tehilim\Client\BaseClient;
 use Polidog\Tehilim\Config;
 use Polidog\Tehilim\Driver\Driver;
+use Polidog\Tehilim\Driver\Drivers;
 use Example\Blog\Generated\Model\UserClient;
 use Example\Blog\Generated\Model\PostClient;
 
@@ -24,9 +26,22 @@ final class TehilimClient extends BaseClient
         $this->registerModel('Post', $this->post);
     }
 
-    public static function connect(Config $config): self
+    /**
+     * Build a client from an already-configured PDO instance.
+     * The driver is inferred from PDO::ATTR_DRIVER_NAME.
+     */
+    public static function fromPdo(PDO $pdo): self
     {
-        return new self($config->driver());
+        return new self(Drivers::forPdo($pdo));
+    }
+
+    /**
+     * Convenience: parse a URL into a PDO then build the client.
+     * For full control over PDO attributes, use fromPdo() instead.
+     */
+    public static function fromUrl(string $url, ?string $user = null, ?string $password = null): self
+    {
+        return self::fromPdo(Config::pdo($url, $user, $password));
     }
 
     /**
