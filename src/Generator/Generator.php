@@ -95,6 +95,8 @@ final class {$this->clientClass} extends BaseClient
     /**
      * @template T
      * @param callable(self): T \$fn
+     * @param ?IsolationLevel \$isolation isolation level for the top-level
+     *        transaction (driver-dependent); must be null on nested calls.
      * @return T|mixed
      */
     public function transaction(callable \$fn, ?IsolationLevel \$isolation = null): mixed
