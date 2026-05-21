@@ -194,7 +194,7 @@ final class {$name} extends BaseModelClient
      */
     public function findUnique(array \$args): ?array
     {
-        return \$this->castOptionalRow(\$this->doFindUnique(\$args));
+        return \$this->narrowOptionalRow(\$this->doFindUnique(\$args));
     }
 
     /**
@@ -203,7 +203,7 @@ final class {$name} extends BaseModelClient
      */
     public function findFirst(array \$args = []): ?array
     {
-        return \$this->castOptionalRow(\$this->doFindFirst(\$args));
+        return \$this->narrowOptionalRow(\$this->doFindFirst(\$args));
     }
 
     /**
@@ -212,7 +212,7 @@ final class {$name} extends BaseModelClient
      */
     public function findMany(array \$args = []): array
     {
-        return \$this->castRows(\$this->doFindMany(\$args));
+        return \$this->narrowRows(\$this->doFindMany(\$args));
     }
 
     /**
@@ -221,7 +221,7 @@ final class {$name} extends BaseModelClient
      */
     public function insert(array \$args): array
     {
-        return \$this->castRow(\$this->doInsert(\$args));
+        return \$this->narrowRow(\$this->doInsert(\$args));
     }
 
     /**
@@ -230,7 +230,7 @@ final class {$name} extends BaseModelClient
      */
     public function update(array \$args): array
     {
-        return \$this->castRow(\$this->doUpdate(\$args));
+        return \$this->narrowRow(\$this->doUpdate(\$args));
     }
 
     /**
@@ -239,7 +239,7 @@ final class {$name} extends BaseModelClient
      */
     public function delete(array \$args): array
     {
-        return \$this->castRow(\$this->doDelete(\$args));
+        return \$this->narrowRow(\$this->doDelete(\$args));
     }
 
     /**
@@ -256,7 +256,7 @@ final class {$name} extends BaseModelClient
      */
     public function upsert(array \$args): array
     {
-        return \$this->castRow(\$this->doUpsert(\$args));
+        return \$this->narrowRow(\$this->doUpsert(\$args));
     }
 
     /**
@@ -290,7 +290,7 @@ final class {$name} extends BaseModelClient
      * @param array<string,mixed> \$row
      * @return {$name}Row
      */
-    private function castRow(array \$row): array
+    private function narrowRow(array \$row): array
     {
         // DB row shape comes from PDO + columnTypes(); trusted to match {$name}Row.
         /** @phpstan-ignore return.type */
@@ -301,7 +301,7 @@ final class {$name} extends BaseModelClient
      * @param array<string,mixed>|null \$row
      * @return {$name}Row|null
      */
-    private function castOptionalRow(?array \$row): ?array
+    private function narrowOptionalRow(?array \$row): ?array
     {
         // DB row shape comes from PDO + columnTypes(); trusted to match {$name}Row.
         /** @phpstan-ignore return.type */
@@ -312,7 +312,7 @@ final class {$name} extends BaseModelClient
      * @param list<array<string,mixed>> \$rows
      * @return list<{$name}Row>
      */
-    private function castRows(array \$rows): array
+    private function narrowRows(array \$rows): array
     {
         // DB row shape comes from PDO + columnTypes(); trusted to match {$name}Row.
         /** @phpstan-ignore return.type */

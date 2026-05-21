@@ -1,5 +1,10 @@
 <?php
 
+// Before running this example, generate the typed client from the schema:
+//   php ../../bin/tehilim push     --schema=./schema.tehilim   # creates blog.sqlite
+//   php ../../bin/tehilim generate --schema=./schema.tehilim   # writes ./generated/
+// The generated/ directory is gitignored — regenerate it locally.
+
 declare(strict_types=1);
 
 require __DIR__ . '/../../vendor/autoload.php';
