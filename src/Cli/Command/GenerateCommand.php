@@ -25,7 +25,8 @@ final class GenerateCommand
         $ns = $gen->namespace();
 
         if (!str_starts_with($out, '/')) {
-            $out = dirname(realpath($opts['schema']) ?: $opts['schema']) . '/' . ltrim($out, './');
+            $base = dirname(realpath($opts['schema']) ?: $opts['schema']);
+            $out = self::resolveRelativePath($base, $out);
         }
 
         (new Generator($schema, $out, $ns))->generate();
@@ -33,5 +34,30 @@ final class GenerateCommand
         echo "Generated client in {$out} (namespace {$ns})\n";
 
         return 0;
+    }
+
+    /**
+     * Join $base with a relative $path, collapsing `.` and `..` segments.
+     * `ltrim($path, './')` is wrong here because it eats the leading dots
+     * of `..`, turning `../src` into `src` and breaking the new default
+     * `generator.output = "../src/Generated"` layout.
+     */
+    private static function resolveRelativePath(string $base, string $path): string
+    {
+        $combined = rtrim($base, '/') . '/' . $path;
+        $parts = [];
+        foreach (explode('/', $combined) as $seg) {
+            if ($seg === '' || $seg === '.') {
+                continue;
+            }
+            if ($seg === '..') {
+                array_pop($parts);
+
+                continue;
+            }
+            $parts[] = $seg;
+        }
+
+        return '/' . implode('/', $parts);
     }
 }

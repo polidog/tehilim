@@ -27,7 +27,11 @@ final class InitCommand
         }
 
         $namespace = $this->detectNamespace($path, self::DEFAULT_OUTPUT) ?? self::DEFAULT_NAMESPACE;
-        file_put_contents($path, $this->template($namespace));
+        if (file_put_contents($path, $this->template($namespace)) === false) {
+            fwrite(STDERR, "tehilim: failed to write {$path}\n");
+
+            return 1;
+        }
         echo "Created {$path} (namespace {$namespace})\n";
 
         return 0;
