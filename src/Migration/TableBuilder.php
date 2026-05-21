@@ -50,6 +50,8 @@ final class TableBuilder
             columns: $columns,
             primaryKey: $pk?->columnName(),
             uniqueColumns: $unique,
+            compositePrimaryKey: $model->compositePrimaryKey(),
+            compositeUniqueGroups: $model->compositeUniqueGroups(),
         );
     }
 

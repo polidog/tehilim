@@ -33,7 +33,10 @@ interface Driver
 
     public function dropColumnSql(string $table, string $col): string;
 
-    public function createUniqueIndexSql(string $table, string $column, string $indexName): string;
+    /**
+     * @param list<string> $columns
+     */
+    public function createUniqueIndexSql(string $table, array $columns, string $indexName): string;
 
     public function dropIndexSql(string $indexName, string $table): string;
 

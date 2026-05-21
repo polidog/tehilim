@@ -303,10 +303,36 @@ PHP;
 
     private function whereUniqueShape(Model $model): string
     {
+        $seen = [];
         $parts = [];
         foreach ($model->uniqueFields() as $f) {
-            $parts[] = $f->columnName() . '?: ' . TypeFormatter::phpType($f);
+            $name = $f->columnName();
+            if (isset($seen[$name])) {
+                continue;
+            }
+            $seen[$name] = true;
+            $parts[] = $name . '?: ' . TypeFormatter::phpType($f);
         }
+
+        $compositeCols = [];
+        foreach ($model->compositePrimaryKey() ?? [] as $c) {
+            $compositeCols[$c] = true;
+        }
+        foreach ($model->compositeUniqueGroups() as $group) {
+            foreach ($group as $c) {
+                $compositeCols[$c] = true;
+            }
+        }
+        foreach (array_keys($compositeCols) as $col) {
+            if (isset($seen[$col])) {
+                continue;
+            }
+            $field = $model->field($col);
+            $type = $field !== null ? TypeFormatter::phpType($field) : 'mixed';
+            $parts[] = $col . '?: ' . $type;
+            $seen[$col] = true;
+        }
+
         if ($parts === []) {
             return 'array<string,mixed>';
         }

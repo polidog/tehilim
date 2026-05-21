@@ -72,4 +72,50 @@ final class Model
         }
         return $this->name;
     }
+
+    /** @return list<string>|null */
+    public function compositePrimaryKey(): ?array
+    {
+        foreach ($this->blockAttributes as $ba) {
+            if ($ba->name !== 'id') {
+                continue;
+            }
+            $val = $ba->args[0] ?? null;
+            if (is_array($val)) {
+                $cols = [];
+                foreach ($val as $c) {
+                    if (is_string($c)) {
+                        $cols[] = $c;
+                    }
+                }
+                return $cols === [] ? null : $cols;
+            }
+        }
+        return null;
+    }
+
+    /** @return list<list<string>> */
+    public function compositeUniqueGroups(): array
+    {
+        $out = [];
+        foreach ($this->blockAttributes as $ba) {
+            if ($ba->name !== 'unique') {
+                continue;
+            }
+            $val = $ba->args[0] ?? null;
+            if (!is_array($val)) {
+                continue;
+            }
+            $cols = [];
+            foreach ($val as $c) {
+                if (is_string($c)) {
+                    $cols[] = $c;
+                }
+            }
+            if (count($cols) >= 2) {
+                $out[] = $cols;
+            }
+        }
+        return $out;
+    }
 }

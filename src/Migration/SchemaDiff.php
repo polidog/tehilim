@@ -75,12 +75,39 @@ final class SchemaDiff
         $newUnique = array_diff($new->uniqueColumns, [$new->primaryKey]);
 
         foreach (array_diff($newUnique, $oldUnique) as $col) {
-            $idx = $this->indexName($new->name, $col);
-            $out[] = $driver->createUniqueIndexSql($new->name, $col, $idx) . ';';
+            $idx = $this->indexName($new->name, [$col]);
+            $out[] = $driver->createUniqueIndexSql($new->name, [$col], $idx) . ';';
         }
         foreach (array_diff($oldUnique, $newUnique) as $col) {
-            $idx = $this->indexName($new->name, $col);
+            $idx = $this->indexName($new->name, [$col]);
             $out[] = $driver->dropIndexSql($idx, $new->name) . ';';
+        }
+
+        $oldComposite = array_map(fn (array $g): string => implode(',', $g), $old->compositeUniqueGroups);
+        $newComposite = array_map(fn (array $g): string => implode(',', $g), $new->compositeUniqueGroups);
+
+        foreach ($new->compositeUniqueGroups as $i => $group) {
+            if (in_array($newComposite[$i], $oldComposite, true)) {
+                continue;
+            }
+            $idx = $this->indexName($new->name, $group);
+            $out[] = $driver->createUniqueIndexSql($new->name, $group, $idx) . ';';
+        }
+        foreach ($old->compositeUniqueGroups as $i => $group) {
+            if (in_array($oldComposite[$i], $newComposite, true)) {
+                continue;
+            }
+            $idx = $this->indexName($new->name, $group);
+            $out[] = $driver->dropIndexSql($idx, $new->name) . ';';
+        }
+
+        if ($old->pkColumns() !== $new->pkColumns()) {
+            $out[] = sprintf(
+                "-- MANUAL: primary key on %s changed (%s -> %s); Tehilim v1 does not auto-alter PKs.",
+                $new->name,
+                implode(',', $old->pkColumns()) ?: '<none>',
+                implode(',', $new->pkColumns()) ?: '<none>',
+            );
         }
 
         return $out;
@@ -132,8 +159,9 @@ final class SchemaDiff
         return $out;
     }
 
-    private function indexName(string $table, string $column): string
+    /** @param list<string> $columns */
+    private function indexName(string $table, array $columns): string
     {
-        return "{$table}_{$column}_key";
+        return $table . '_' . implode('_', $columns) . '_key';
     }
 }

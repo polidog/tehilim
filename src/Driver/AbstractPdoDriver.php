@@ -79,18 +79,30 @@ abstract class AbstractPdoDriver implements Driver
     {
         $lines = [];
         foreach ($def->columns as $col) {
-            $lines[] = $this->columnSql($col, $def->primaryKey === $col->name);
+            $isInlinePrimary = $def->compositePrimaryKey === null
+                && $def->primaryKey !== null
+                && $def->primaryKey === $col->name
+                && $this->primaryKeyInline();
+            $lines[] = $this->columnSql($col, $isInlinePrimary);
         }
 
-        if ($def->primaryKey !== null && !$this->primaryKeyInline()) {
+        if ($def->compositePrimaryKey !== null) {
+            $cols = implode(', ', array_map($this->quoteIdent(...), $def->compositePrimaryKey));
+            $lines[] = "PRIMARY KEY ({$cols})";
+        } elseif ($def->primaryKey !== null && !$this->primaryKeyInline()) {
             $lines[] = 'PRIMARY KEY (' . $this->quoteIdent($def->primaryKey) . ')';
         }
 
         foreach ($def->uniqueColumns as $name) {
-            if ($name === $def->primaryKey) {
+            if ($def->compositePrimaryKey === null && $name === $def->primaryKey) {
                 continue;
             }
             $lines[] = 'UNIQUE (' . $this->quoteIdent($name) . ')';
+        }
+
+        foreach ($def->compositeUniqueGroups as $group) {
+            $cols = implode(', ', array_map($this->quoteIdent(...), $group));
+            $lines[] = "UNIQUE ({$cols})";
         }
 
         return sprintf(
@@ -129,13 +141,14 @@ abstract class AbstractPdoDriver implements Driver
         );
     }
 
-    public function createUniqueIndexSql(string $table, string $column, string $indexName): string
+    public function createUniqueIndexSql(string $table, array $columns, string $indexName): string
     {
+        $cols = implode(', ', array_map($this->quoteIdent(...), $columns));
         return sprintf(
             'CREATE UNIQUE INDEX %s ON %s (%s)',
             $this->quoteIdent($indexName),
             $this->quoteIdent($table),
-            $this->quoteIdent($column),
+            $cols,
         );
     }
 
