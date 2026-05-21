@@ -5,12 +5,23 @@ declare(strict_types=1);
 namespace Polidog\Tehilim\Driver;
 
 use PDO;
+use Polidog\Tehilim\Client\IsolationLevel;
 use Polidog\Tehilim\Migration\ColumnDef;
 use Polidog\Tehilim\Migration\TableDef;
 
 interface Driver
 {
     public function pdo(): PDO;
+
+    /**
+     * Begin a top-level transaction, optionally setting its isolation level.
+     *
+     * Implementations must emit the driver-appropriate `SET TRANSACTION` /
+     * `BEGIN ... ISOLATION LEVEL` sequencing when $level is non-null. Drivers
+     * that cannot honor the requested level (e.g. SQLite for anything other
+     * than SERIALIZABLE) must throw, never silently downgrade.
+     */
+    public function beginTransaction(?IsolationLevel $level = null): void;
 
     public function quoteIdent(string $name): string;
 

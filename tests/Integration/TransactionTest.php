@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Polidog\Tehilim\Tests\Integration;
 
 use PHPUnit\Framework\TestCase;
+use Polidog\Tehilim\Client\IsolationLevel;
 use Polidog\Tehilim\Client\Rollback;
 use Polidog\Tehilim\Config;
 use Polidog\Tehilim\Driver\Drivers;
@@ -111,6 +112,46 @@ final class TransactionTest extends TestCase
         });
 
         self::assertSame(2, $db->user->count());
+    }
+
+    public function testSqliteAcceptsSerializableIsolation(): void
+    {
+        $db = $this->makeClient('Tx6');
+
+        $count = $db->transaction(function ($tx) {
+            $tx->user->insert(['data' => ['email' => 'serial@x']]);
+            return $tx->user->count();
+        }, IsolationLevel::Serializable);
+
+        self::assertSame(1, $count);
+        self::assertSame(1, $db->user->count());
+    }
+
+    public function testSqliteRejectsNonSerializableIsolation(): void
+    {
+        $db = $this->makeClient('Tx7');
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('SQLite only supports IsolationLevel::Serializable');
+
+        $db->transaction(
+            fn ($tx) => $tx->user->insert(['data' => ['email' => 'nope@x']]),
+            IsolationLevel::ReadCommitted,
+        );
+    }
+
+    public function testIsolationLevelRejectedOnNestedTransaction(): void
+    {
+        $db = $this->makeClient('Tx8');
+
+        $this->expectException(\LogicException::class);
+
+        $db->transaction(function ($tx) {
+            $tx->transaction(
+                fn ($tx2) => $tx2->user->insert(['data' => ['email' => 'nested@x']]),
+                IsolationLevel::Serializable,
+            );
+        });
     }
 
     private function makeClient(string $ns): object

@@ -6,6 +6,7 @@ namespace Polidog\Tehilim\Client;
 
 use Closure;
 use InvalidArgumentException;
+use LogicException;
 use Polidog\Tehilim\Cache\RequestCache;
 use Polidog\Tehilim\Driver\Driver;
 use Throwable;
@@ -70,17 +71,26 @@ abstract class BaseClient
      * Rollback payload is returned. Any other Throwable rolls back and
      * propagates.
      *
+     * `$isolation` sets the isolation level for the top-level transaction
+     * (driver-dependent). It cannot be supplied on a nested call: SAVEPOINTs
+     * inherit the outer transaction's isolation level.
+     *
      * @template T
      *
      * @param callable(static): T $fn
      *
      * @return mixed|T
      */
-    public function transaction(callable $fn): mixed
+    public function transaction(callable $fn, ?IsolationLevel $isolation = null): mixed
     {
         $pdo = $this->driver->pdo();
 
         if ($pdo->inTransaction()) {
+            if ($isolation !== null) {
+                throw new LogicException(
+                    'Isolation level can only be set on a top-level transaction; nested calls reuse the outer transaction.',
+                );
+            }
             $sp = 'tehilim_sp_' . bin2hex(random_bytes(4));
             $pdo->prepare("SAVEPOINT {$sp}")->execute();
 
@@ -102,7 +112,7 @@ abstract class BaseClient
             }
         }
 
-        $pdo->beginTransaction();
+        $this->driver->beginTransaction($isolation);
 
         try {
             $result = $fn($this);

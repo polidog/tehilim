@@ -8,6 +8,7 @@ use DateTimeImmutable;
 use DateTimeInterface;
 use InvalidArgumentException;
 use PDO;
+use Polidog\Tehilim\Client\IsolationLevel;
 use Polidog\Tehilim\Migration\ColumnDef;
 use Polidog\Tehilim\Migration\TableDef;
 use RuntimeException;
@@ -24,6 +25,16 @@ abstract class AbstractPdoDriver implements Driver
     public function pdo(): PDO
     {
         return $this->pdoInstance;
+    }
+
+    public function beginTransaction(?IsolationLevel $level = null): void
+    {
+        if ($level !== null) {
+            throw new RuntimeException(
+                sprintf('%s does not support isolation level overrides.', static::class),
+            );
+        }
+        $this->pdoInstance->beginTransaction();
     }
 
     public function insertReturning(string $table, ?string $primaryKey, array $data, array $allColumns): array

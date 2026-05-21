@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Polidog\Tehilim\Driver;
 
 use PDO;
+use Polidog\Tehilim\Client\IsolationLevel;
 use Polidog\Tehilim\Migration\ColumnDef;
 use RuntimeException;
 
@@ -13,6 +14,16 @@ final class PostgresDriver extends AbstractPdoDriver
     public function quoteIdent(string $name): string
     {
         return '"' . str_replace('"', '""', $name) . '"';
+    }
+
+    public function beginTransaction(?IsolationLevel $level = null): void
+    {
+        // PostgreSQL: SET TRANSACTION must run inside the transaction, before
+        // any other statement runs against it.
+        $this->pdoInstance->beginTransaction();
+        if ($level !== null) {
+            $this->pdoInstance->exec('SET TRANSACTION ISOLATION LEVEL ' . $level->value);
+        }
     }
 
     public function listTables(): array
