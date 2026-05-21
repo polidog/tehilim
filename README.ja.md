@@ -317,6 +317,44 @@ $db->transaction(function ($tx) {
 
 クロージャの引数は生成済みクライアントの具体型として型付けされるので、`$tx->user`、`$tx->post` などが補完されて PHPStan のチェックも効きます。
 
+## プロファイラ連携
+
+Tehilim は各操作を任意の callable でラップできます。Relayer の `Profiler::measure(string $collector, string $label, callable $fn): mixed` と同じシグネチャを採用しているので、Relayer プロファイラはそのまま first-class callable として渡せます:
+
+```php
+// Relayer 連携 — measure() を first-class callable で渡すだけ
+$db = TehilimClient::fromPdo($pdo)
+    ->withProfiler($relayer->profiler->measure(...));
+```
+
+独自プロファイラは同じシグネチャの callable なら何でも OK:
+
+```php
+$db->withProfiler(function (string $collector, string $label, callable $fn) {
+    $start = hrtime(true);
+    try {
+        return $fn();
+    } finally {
+        error_log(sprintf('[%s/%s] %.2fms', $collector, $label, (hrtime(true) - $start) / 1e6));
+    }
+});
+
+$db->withProfiler(null);  // 解除
+```
+
+### 発火するイベント
+
+| API | collector | label |
+|---|---|---|
+| `findUnique` / `findFirst` / `findMany` | `tehilim.findUnique` 等 | `<Model>` |
+| `insert` / `update` / `delete` / `count` | `tehilim.insert` 等 | `<Model>` |
+| `upsert` / `insertMany` / `updateMany` / `deleteMany` | `tehilim.upsert` 等 | `<Model>` |
+
+- `include` のロードも同じフックを通るので、M2M / hasMany の追加クエリは親 `findMany` の下に自然にネストします。
+- `upsert` も内側の `findFirst` + `insert` / `update` の上にネスト。
+- **キャッシュヒット時は profiler を呼ばない** — 実際に DB に行った操作だけが記録されます。
+- プロファイラ未設定時はゼロオーバーヘッド (nullable プロパティのチェック 1 回のみ)。
+
 ## PHPStan 拡張
 
 Tehilim はパッケージ直下に PHPStan 拡張 (`extension.neon`) を同梱しています。リテラルの `select` を渡すと **`findUnique` / `findFirst` / `findMany` の戻り値型を絞り込みます**:
