@@ -28,4 +28,14 @@ final class TehilimClient extends BaseClient
     {
         return new self($config->driver());
     }
+
+    /**
+     * @template T
+     * @param callable(self): T $fn
+     * @return T|mixed
+     */
+    public function transaction(callable $fn): mixed
+    {
+        return parent::transaction($fn);
+    }
 }

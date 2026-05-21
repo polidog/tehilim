@@ -112,4 +112,40 @@ final class PostClient extends BaseModelClient
     {
         return $this->doCount($args);
     }
+
+    /**
+     * @param array{where: PostWhereUnique, update: PostUpdateInput, create: PostCreateInput} $args
+     * @return PostRow
+     */
+    public function upsert(array $args): array
+    {
+        return $this->doUpsert($args);
+    }
+
+    /**
+     * @param array{data: list<PostCreateInput>, skipDuplicates?: bool} $args
+     * @return array{count: int}
+     */
+    public function createMany(array $args): array
+    {
+        return $this->doCreateMany($args);
+    }
+
+    /**
+     * @param array{where?: PostWhereInput, data: PostUpdateInput} $args
+     * @return array{count: int}
+     */
+    public function updateMany(array $args): array
+    {
+        return $this->doUpdateMany($args);
+    }
+
+    /**
+     * @param array{where?: PostWhereInput} $args
+     * @return array{count: int}
+     */
+    public function deleteMany(array $args = []): array
+    {
+        return $this->doDeleteMany($args);
+    }
 }
