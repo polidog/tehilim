@@ -1,0 +1,27 @@
+// Basic example: blog with users and posts
+
+datasource db {
+  provider = "sqlite"
+  url      = "sqlite:./blog.sqlite"
+}
+
+generator client {
+  output    = "./generated"
+  namespace = "Example\\Blog\\Generated"
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  name      String?
+  createdAt DateTime @default(now())
+}
+
+model Post {
+  id        Int      @id @default(autoincrement())
+  title     String
+  body      String?
+  published Boolean  @default(false)
+  authorId  Int
+  createdAt DateTime @default(now())
+}

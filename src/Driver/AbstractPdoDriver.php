@@ -1,0 +1,148 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Polidog\Tehilim\Driver;
+
+use DateTimeImmutable;
+use DateTimeInterface;
+use PDO;
+use Polidog\Tehilim\Migration\ColumnDef;
+use Polidog\Tehilim\Migration\TableDef;
+
+abstract class AbstractPdoDriver implements Driver
+{
+    public function __construct(protected readonly PDO $pdoInstance)
+    {
+        $this->pdoInstance->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        $this->pdoInstance->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+        $this->pdoInstance->setAttribute(PDO::ATTR_EMULATE_PREPARES, false);
+    }
+
+    public function pdo(): PDO
+    {
+        return $this->pdoInstance;
+    }
+
+    public function insertReturning(string $table, ?string $primaryKey, array $data, array $allColumns): array
+    {
+        $columns = array_keys($data);
+        $quotedCols = array_map($this->quoteIdent(...), $columns);
+        $placeholders = array_fill(0, count($columns), '?');
+
+        $sql = sprintf(
+            'INSERT INTO %s (%s) VALUES (%s)',
+            $this->quoteIdent($table),
+            implode(', ', $quotedCols),
+            implode(', ', $placeholders),
+        );
+
+        $stmt = $this->pdoInstance->prepare($sql);
+        $stmt->execute(array_values($data));
+
+        if ($primaryKey === null) {
+            return $data;
+        }
+
+        $pkValue = $data[$primaryKey] ?? $this->pdoInstance->lastInsertId();
+        if ($pkValue === false) {
+            throw new \RuntimeException("Cannot determine primary key after insert into {$table}");
+        }
+
+        return $this->fetchByPk($table, $primaryKey, $pkValue, $allColumns);
+    }
+
+    /**
+     * @param list<string> $columns
+     * @return array<string,mixed>
+     */
+    protected function fetchByPk(string $table, string $pk, mixed $pkValue, array $columns): array
+    {
+        $cols = $columns === [] ? '*' : implode(', ', array_map($this->quoteIdent(...), $columns));
+        $sql = sprintf(
+            'SELECT %s FROM %s WHERE %s = ?',
+            $cols,
+            $this->quoteIdent($table),
+            $this->quoteIdent($pk),
+        );
+        $stmt = $this->pdoInstance->prepare($sql);
+        $stmt->execute([$pkValue]);
+        $row = $stmt->fetch();
+        if (!is_array($row)) {
+            throw new \RuntimeException("Inserted row not found in {$table} (pk={$pk})");
+        }
+        /** @var array<string,mixed> $row */
+        return $row;
+    }
+
+    public function createTableSql(TableDef $def): string
+    {
+        $lines = [];
+        foreach ($def->columns as $col) {
+            $lines[] = $this->columnSql($col, $def->primaryKey === $col->name);
+        }
+
+        if ($def->primaryKey !== null && !$this->primaryKeyInline()) {
+            $lines[] = 'PRIMARY KEY (' . $this->quoteIdent($def->primaryKey) . ')';
+        }
+
+        foreach ($def->uniqueColumns as $name) {
+            if ($name === $def->primaryKey) {
+                continue;
+            }
+            $lines[] = 'UNIQUE (' . $this->quoteIdent($name) . ')';
+        }
+
+        return sprintf(
+            "CREATE TABLE %s (\n  %s\n)",
+            $this->quoteIdent($def->name),
+            implode(",\n  ", $lines),
+        );
+    }
+
+    public function dropTableIfExistsSql(string $table): string
+    {
+        return 'DROP TABLE IF EXISTS ' . $this->quoteIdent($table);
+    }
+
+    abstract protected function columnSql(ColumnDef $col, bool $isPrimary): string;
+
+    protected function primaryKeyInline(): bool
+    {
+        return false;
+    }
+
+    public function cast(string $phpType, mixed $value): mixed
+    {
+        if ($value === null) {
+            return null;
+        }
+        return match ($phpType) {
+            'int', 'BigInt' => is_int($value) ? $value : (int) $value,
+            'float' => (float) $value,
+            'bool' => is_bool($value) ? $value : (bool) $value,
+            'string' => (string) $value,
+            'DateTime' => $value instanceof DateTimeInterface
+                ? $value
+                : new DateTimeImmutable((string) $value),
+            'json' => is_string($value) ? json_decode($value, true) : $value,
+            'bytes' => (string) $value,
+            default => $value,
+        };
+    }
+
+    public function bind(string $phpType, mixed $value): mixed
+    {
+        if ($value === null) {
+            return null;
+        }
+        return match ($phpType) {
+            'bool' => $value ? 1 : 0,
+            'DateTime' => $value instanceof DateTimeInterface
+                ? $value->format('Y-m-d H:i:s')
+                : (string) $value,
+            'json' => is_string($value) ? $value : json_encode($value),
+            default => $value,
+        };
+    }
+}

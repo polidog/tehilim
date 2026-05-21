@@ -1,0 +1,29 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Example\Blog\Generated;
+
+use Polidog\Tehilim\Client\BaseClient;
+use Polidog\Tehilim\Config;
+use Polidog\Tehilim\Driver\Driver;
+use Example\Blog\Generated\Model\UserClient;
+use Example\Blog\Generated\Model\PostClient;
+
+final class TehilimClient extends BaseClient
+{
+    public readonly UserClient $user;
+    public readonly PostClient $post;
+
+    public function __construct(Driver $driver)
+    {
+        parent::__construct($driver);
+        $this->user = new UserClient($driver);
+        $this->post = new PostClient($driver);
+    }
+
+    public static function connect(Config $config): self
+    {
+        return new self($config->driver());
+    }
+}

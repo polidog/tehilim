@@ -1,0 +1,24 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+$candidates = [
+    __DIR__ . '/../vendor/autoload.php',
+    __DIR__ . '/../../../autoload.php',
+    __DIR__ . '/../../autoload.php',
+];
+$loaded = false;
+foreach ($candidates as $path) {
+    if (is_file($path)) {
+        require $path;
+        $loaded = true;
+        break;
+    }
+}
+if (!$loaded) {
+    fwrite(STDERR, "tehilim: composer autoloader not found. Run 'composer install'.\n");
+    exit(1);
+}
+
+exit((new Polidog\Tehilim\Cli\Application())->run($argv));
