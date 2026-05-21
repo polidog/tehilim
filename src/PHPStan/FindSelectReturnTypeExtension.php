@@ -79,19 +79,7 @@ final class FindSelectReturnTypeExtension implements DynamicMethodReturnTypeExte
             return $defaultReturn;
         }
 
-        $pickedKeys = [];
-        $valueTypes = $selectConst->getValueTypes();
-        foreach ($selectConst->getKeyTypes() as $i => $keyType) {
-            $strings = $keyType->getConstantStrings();
-            if (count($strings) !== 1) {
-                continue;
-            }
-            $valueType = $valueTypes[$i] ?? null;
-            if ($valueType === null || !$valueType->isTrue()->yes()) {
-                continue;
-            }
-            $pickedKeys[] = $strings[0]->getValue();
-        }
+        $pickedKeys = $this->extractPickedKeys($selectConst);
         if ($pickedKeys === []) {
             return $defaultReturn;
         }
@@ -118,6 +106,39 @@ final class FindSelectReturnTypeExtension implements DynamicMethodReturnTypeExte
     {
         $arrays = $type->getConstantArrays();
         return count($arrays) === 1 ? $arrays[0] : null;
+    }
+
+    /**
+     * Picks column names from a select argument that can be either:
+     *   - list form:  ['id', 'email']
+     *   - map form:   ['id' => true, 'email' => true]
+     *
+     * @return list<string>
+     */
+    private function extractPickedKeys(ConstantArrayType $select): array
+    {
+        $picked = [];
+        $isList = $select->isList()->yes();
+        $valueTypes = $select->getValueTypes();
+        foreach ($select->getKeyTypes() as $i => $keyType) {
+            $valueType = $valueTypes[$i] ?? null;
+            if ($valueType === null) {
+                continue;
+            }
+            if ($isList) {
+                $strings = $valueType->getConstantStrings();
+                if (count($strings) === 1) {
+                    $picked[] = $strings[0]->getValue();
+                }
+                continue;
+            }
+            $strings = $keyType->getConstantStrings();
+            if (count($strings) !== 1 || !$valueType->isTrue()->yes()) {
+                continue;
+            }
+            $picked[] = $strings[0]->getValue();
+        }
+        return $picked;
     }
 
     private function resolvePrimaryKey(MethodCall $methodCall, Scope $scope): ?string

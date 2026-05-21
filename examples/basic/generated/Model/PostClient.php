@@ -17,10 +17,12 @@ use Polidog\Tehilim\Client\Relation;
  * @phpstan-type PostWhereInput array<string,mixed>
  * @phpstan-type PostOrderBy array<string,'asc'|'desc'>|list<array<string,'asc'|'desc'>>
  * @phpstan-type PostInclude array{author?: bool|array{where?: array<string,mixed>, take?: int, skip?: int}}
- * @phpstan-type PostSelect array{id?: bool, title?: bool, body?: bool, published?: bool, authorId?: bool, createdAt?: bool, author?: bool}
+ * @phpstan-type PostSelect array{id?: bool, title?: bool, body?: bool, published?: bool, authorId?: bool, createdAt?: bool, author?: bool}|list<'id'|'title'|'body'|'published'|'authorId'|'createdAt'|'author'>
  */
 final class PostClient extends BaseModelClient
 {
+    public const ?string PK = 'id';
+
     protected function table(): string
     {
         return 'Post';

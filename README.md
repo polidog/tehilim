@@ -161,9 +161,13 @@ $posts = $db->post->findMany([
 
 // Project a subset of columns (PK is always kept):
 $slim = $db->user->findMany([
+    'select' => ['id', 'email'],
+]);
+// Map form is equivalent — handy when you want to compute keys dynamically:
+$slim = $db->user->findMany([
     'select' => ['id' => true, 'email' => true],
 ]);
-// With the bundled PHPStan extension, the return type is narrowed:
+// With the bundled PHPStan extension, the return type is narrowed to
 // list<array{id:int, email:string}> — PHPStan flags $row['name'] as missing.
 ```
 

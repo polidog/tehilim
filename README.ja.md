@@ -147,10 +147,14 @@ $posts = $db->post->findMany([
 
 // カラムの部分射影 (PK は常に保持される):
 $slim = $db->user->findMany([
+    'select' => ['id', 'email'],
+]);
+// map 形式も同じ意味 — キーを動的に組み立てたい場合に便利:
+$slim = $db->user->findMany([
     'select' => ['id' => true, 'email' => true],
 ]);
-// 同梱の PHPStan 拡張により戻り値型も narrow される:
-// list<array{id:int, email:string}> — $row['name'] は PHPStan が怒る
+// 同梱の PHPStan 拡張により戻り値型は
+// list<array{id:int, email:string}> に narrow される — $row['name'] は PHPStan が怒る
 ```
 
 Tehilim には PHPStan 拡張 (`extension.neon`) が同梱されています。リテラルの `select` 引数を見て `find*` の戻り値型を絞り込みます。`phpstan/extension-installer` が入っていれば自動で取り込まれます。なければ `phpstan.neon` に手動 include:

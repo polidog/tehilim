@@ -119,7 +119,7 @@ PHP;
         $updateShape = $this->updateInputShape($model, $relations);
         $whereUniqueShape = $this->whereUniqueShape($model);
         $includeShape = $this->includeShape($name, $relations);
-        $selectShape = $this->selectShape($model, $relations);
+        $selectShape = $this->selectShape($model);
 
         $columnsArray = $this->phpArrayList(array_map(
             static fn (Field $f): string => $f->columnName(),
@@ -438,18 +438,24 @@ PHP;
     }
 
     /**
-     * @param array<string, array{relation:Relation, field:Field}> $relations
+     * `select` only ever projects scalar columns — relations are handled by
+     * `include` separately. Both map and list shorthand are accepted.
      */
-    private function selectShape(Model $model, array $relations): string
+    private function selectShape(Model $model): string
     {
-        $parts = [];
+        $mapParts = [];
+        $literals = [];
         foreach ($model->scalarFields() as $f) {
-            $parts[] = $f->columnName() . '?: bool';
+            $col = $f->columnName();
+            $mapParts[] = $col . '?: bool';
+            $literals[] = var_export($col, true);
         }
-        foreach ($relations as $name => $_info) {
-            $parts[] = $name . '?: bool';
+        $mapForm = 'array{' . implode(', ', $mapParts) . '}';
+        if ($literals === []) {
+            return $mapForm;
         }
-        return 'array{' . implode(', ', $parts) . '}';
+        $listForm = 'list<' . implode('|', $literals) . '>';
+        return $mapForm . '|' . $listForm;
     }
 
     /**
