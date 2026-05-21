@@ -17,10 +17,12 @@ use Polidog\Tehilim\Client\Relation;
  * @phpstan-type UserWhereInput array<string,mixed>
  * @phpstan-type UserOrderBy array<string,'asc'|'desc'>|list<array<string,'asc'|'desc'>>
  * @phpstan-type UserInclude array{posts?: bool|array{where?: array<string,mixed>, take?: int, skip?: int}}
- * @phpstan-type UserSelect array{id?: bool, email?: bool, name?: bool, createdAt?: bool, posts?: bool}
+ * @phpstan-type UserSelect array{id?: bool, email?: bool, name?: bool, createdAt?: bool, posts?: bool}|list<'id'|'email'|'name'|'createdAt'|'posts'>
  */
 final class UserClient extends BaseModelClient
 {
+    public const ?string PK = 'id';
+
     protected function table(): string
     {
         return 'User';

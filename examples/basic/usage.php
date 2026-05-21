@@ -54,7 +54,7 @@ foreach ($posts as $p) {
 
 echo "\n-- select projection --\n";
 $slim = $db->user->findMany([
-    'select'  => ['id' => true, 'email' => true],
+    'select'  => ['id', 'email'],
     'orderBy' => ['id' => 'asc'],
 ]);
 var_export($slim);
