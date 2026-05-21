@@ -153,15 +153,8 @@ $slim = $db->user->findMany([
 $slim = $db->user->findMany([
     'select' => ['id' => true, 'email' => true],
 ]);
-// 同梱の PHPStan 拡張により戻り値型は
+// 同梱の PHPStan 拡張 (下記参照) により戻り値型は
 // list<array{id:int, email:string}> に narrow される — $row['name'] は PHPStan が怒る
-```
-
-Tehilim には PHPStan 拡張 (`extension.neon`) が同梱されています。リテラルの `select` 引数を見て `find*` の戻り値型を絞り込みます。`phpstan/extension-installer` が入っていれば自動で取り込まれます。なければ `phpstan.neon` に手動 include:
-
-```yaml
-includes:
-    - vendor/polidog/tehilim/extension.neon
 ```
 
 ## Many-to-many
@@ -323,6 +316,66 @@ $db->transaction(function ($tx) {
 ```
 
 クロージャの引数は生成済みクライアントの具体型として型付けされるので、`$tx->user`、`$tx->post` などが補完されて PHPStan のチェックも効きます。
+
+## PHPStan 拡張
+
+Tehilim はパッケージ直下に PHPStan 拡張 (`extension.neon`) を同梱しています。リテラルの `select` を渡すと **`findUnique` / `findFirst` / `findMany` の戻り値型を絞り込みます**:
+
+```php
+$row = $db->user->findUnique([
+    'where'  => ['id' => 1],
+    'select' => ['email', 'name'],
+]);
+// PHPStan からの見え方: array{email: string, name: string|null, id: int}|null
+// (PK はランタイム挙動と一致させて自動付与)
+
+echo $row['email'];   // ✓
+echo $row['name'];    // ✓
+echo $row['age'];     // ✗ PHPStan エラー: narrow 後のキーに存在しない
+```
+
+### セットアップ
+
+**推奨 — `phpstan/extension-installer` で自動取り込み:**
+
+```bash
+composer require --dev phpstan/extension-installer
+```
+
+installer が各パッケージの `composer.json` の `extra.phpstan.includes` を読んで自動配線してくれるので、ユーザー側の `phpstan.neon` には何も書かなくて OK。
+
+**手動 — `phpstan.neon` で明示 include:**
+
+```yaml
+# phpstan.neon
+includes:
+    - vendor/polidog/tehilim/extension.neon
+```
+
+### 仕組み
+
+- 生成されたモデルクライアントは `public const ?string PK = 'id';` (複合 PK のモデルは `null`) を宣言。
+- 拡張は native reflection でその定数を読み、narrow した shape に PK を加える — ランタイムの auto-include と一致。
+- narrowing が効くのは **リテラルの** `select` のみ。以下のどちらの形式も OK:
+  ```php
+  ['select' => ['id', 'email']]                    // リスト省略記法
+  ['select' => ['id' => true, 'email' => true]]    // map 形式
+  ```
+  動的に組み立てた配列 (`$select` を変数で渡す、union が解決しきれない等) は narrow されず元の `XxxRow` のまま。
+- row shape に存在しないキーは黙ってスキップ。リレーション名は `select` ではなく `include` の担当なので、ここに渡しても narrow には寄与しません (ランタイムも無視する挙動と一致)。
+
+### 動作確認
+
+任意のテストファイルに `assertType` を入れて PHPStan を回せば確認できます:
+
+```php
+use function PHPStan\Testing\assertType;
+
+$row = $db->user->findUnique(['where' => ['id' => 1], 'select' => ['email']]);
+assertType('array{email: string, id: int}|null', $row);
+```
+
+拡張自身のテストは `tests/PHPStan/SelectNarrowingTest.php` にあるので、参考にどうぞ。
 
 ## ステータス
 
