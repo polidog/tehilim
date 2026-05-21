@@ -73,17 +73,33 @@ final class RequestCacheTest extends TestCase
 
         $db->user->insert(['data' => ['email' => 'a@x']]);
 
+        // Seed two distinct entries on a cached() clone so we can observe
+        // whether the post-write reads come back as misses.
         $cached = $db->user->cached();
         $row = $cached->findUnique(['where' => ['email' => 'a@x']]);
         self::assertNotNull($row);
+        self::assertSame(1, $cached->count());
+
+        // Confirm both entries are live: re-issuing the same calls hits the cache.
         $cached->findUnique(['where' => ['email' => 'a@x']]);
-        self::assertSame(1, $db->cache()->hits());
+        $cached->count();
+        self::assertSame(2, $db->cache()->hits());
+        $missesBeforeWrite = $db->cache()->misses();
 
         // Any write through the root flushes everything — including entries
         // stored by sibling cached() clones.
         $db->user->insert(['data' => ['email' => 'b@x']]);
 
+        // The two reads must now miss (flush wiped them) and return fresh values.
         self::assertSame(2, $cached->count(), 'count must reflect new row');
+        $reloaded = $cached->findUnique(['where' => ['email' => 'a@x']]);
+        self::assertNotNull($reloaded);
+        self::assertSame(
+            $missesBeforeWrite + 2,
+            $db->cache()->misses(),
+            'both previously cached entries should miss after the write flush',
+        );
+        self::assertSame(2, $db->cache()->hits(), 'no new hits should have happened post-flush');
     }
 
     public function testDistinctArgsCacheSeparately(): void
