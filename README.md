@@ -1,5 +1,7 @@
 # Tehilim
 
+[English](README.md) · [日本語](README.ja.md)
+
 Prisma-style, schema-first database toolkit for PHP — without class mapping.
 
 You declare your data model in a single schema file. Tehilim generates a
