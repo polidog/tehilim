@@ -131,7 +131,6 @@ final class ProfilerTest extends TestCase
     public function testCacheHitsSkipProfiler(): void
     {
         [$db] = $this->makeClient('Prof4');
-        $db->enableCache();
 
         $events = 0;
         $db->withProfiler(function (string $c, string $l, callable $fn) use (&$events) {
@@ -142,9 +141,9 @@ final class ProfilerTest extends TestCase
         $db->user->insert(['data' => ['email' => 'a@x']]);
         $eventsAfterInsert = $events;
 
-        $db->user->findMany();              // miss → profile fires
-        $db->user->findMany();              // hit  → profile skipped
-        $db->user->findMany();              // hit  → profile skipped
+        $db->user->cached()->findMany();    // miss → profile fires
+        $db->user->cached()->findMany();    // hit  → profile skipped
+        $db->user->cached()->findMany();    // hit  → profile skipped
 
         // We expect: insert + first findMany + (nested findFirst/findMany inside insert? no — leaf)
         // = exactly one new event from the miss; the two hits should not increment.

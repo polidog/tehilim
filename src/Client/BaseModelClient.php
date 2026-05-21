@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Polidog\Tehilim\Client;
 
+use Polidog\Tehilim\Cache\RequestCache;
 use Polidog\Tehilim\Driver\Driver;
 use Polidog\Tehilim\Query\WhereCompiler;
 
@@ -23,6 +24,7 @@ abstract class BaseModelClient
 
     private readonly WhereCompiler $whereCompiler;
     protected ?BaseClient $root = null;
+    private bool $useCache = false;
 
     public function __construct(protected readonly Driver $driver)
     {
@@ -32,6 +34,34 @@ abstract class BaseModelClient
     public function bindRoot(BaseClient $root): void
     {
         $this->root = $root;
+    }
+
+    /**
+     * Return a shallow clone of this model client whose `findUnique` /
+     * `findFirst` / `findMany` / `count` calls read from and write to the
+     * root client's RequestCache. The original instance is unaffected, so
+     * `cached()` is safe to chain inline:
+     *
+     *     $db->user->cached()->findUnique(['where' => ['id' => 1]]);
+     *
+     * The cache is shared across every clone (it lives on the root client),
+     * so any write through the root flushes entries created here too.
+     * Relations loaded via `include` are not cached automatically — call
+     * `cached()` on the target model client explicitly if you need that.
+     */
+    public function cached(): static
+    {
+        $clone = clone $this;
+        $clone->useCache = true;
+        return $clone;
+    }
+
+    private function activeCache(): ?RequestCache
+    {
+        if (!$this->useCache) {
+            return null;
+        }
+        return $this->root?->cache();
     }
 
     /**
@@ -96,7 +126,7 @@ abstract class BaseModelClient
      */
     private function findOneCached(string $op, array $args): ?array
     {
-        $cache = $this->root?->cache();
+        $cache = $this->activeCache();
         $cacheKey = $cache !== null ? $this->cacheKey($op, $args) : null;
         if ($cache !== null && $cacheKey !== null && $cache->has($cacheKey)) {
             /** @var array<string,mixed>|null $hit */
@@ -121,7 +151,7 @@ abstract class BaseModelClient
      */
     protected function doFindMany(array $args = []): array
     {
-        $cache = $this->root?->cache();
+        $cache = $this->activeCache();
         $cacheKey = $cache !== null ? $this->cacheKey('findMany', $args) : null;
         if ($cache !== null && $cacheKey !== null && $cache->has($cacheKey)) {
             /** @var list<array<string,mixed>> $hit */
@@ -405,7 +435,7 @@ abstract class BaseModelClient
      */
     protected function doCount(array $args = []): int
     {
-        $cache = $this->root?->cache();
+        $cache = $this->activeCache();
         $cacheKey = $cache !== null ? $this->cacheKey('count', $args) : null;
         if ($cache !== null && $cacheKey !== null && $cache->has($cacheKey)) {
             return (int) $cache->get($cacheKey);

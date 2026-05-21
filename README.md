@@ -281,25 +281,40 @@ $db->user->upsert([
 
 ## Request-scoped cache
 
-Opt-in memoization for read calls (`findUnique` / `findFirst` / `findMany`
-/ `count`). Any write (`insert` / `update` / `delete` / `upsert` /
-`insertMany` / `updateMany` / `deleteMany`) **flushes the entire cache
-before executing**, so a read-write-read pattern inside the same request
-sees the update.
+Per-call opt-in memoization for read calls. Chain `cached()` on the
+model client and the next `findUnique` / `findFirst` / `findMany` /
+`count` reads from (and stores into) the request-scoped cache; plain
+calls always go to the DB. Any write (`insert` / `update` / `delete` /
+`upsert` / `insertMany` / `updateMany` / `deleteMany`) **flushes the
+entire cache before executing**, so a read-write-read pattern inside the
+same request sees the update.
 
 ```php
-$db = TehilimClient::fromPdo($pdo)->enableCache();
+$db = TehilimClient::fromPdo($pdo);
 
-// Both reads hit the DB once total
-$me = $db->user->findUnique(['where' => ['id' => $uid]]);   // miss → store
-$me = $db->user->findUnique(['where' => ['id' => $uid]]);   // hit
+// Hot path — explicitly memoize this lookup
+$me = $db->user->cached()->findUnique(['where' => ['id' => $uid]]);   // miss → store
+$me = $db->user->cached()->findUnique(['where' => ['id' => $uid]]);   // hit
+
+// Cold or sensitive read — plain call, never touches the cache
+$fresh = $db->user->findUnique(['where' => ['id' => $uid]]);
 
 $db->user->update(['where' => ['id' => $uid], 'data' => ['name' => 'X']]);
-// cache is now empty; the next read goes back to the DB
+// cache is now empty; the next cached() read goes back to the DB
 
-$db->cache()?->hits();      // observability
+$db->cache()->hits();       // observability
 $db->flushCache();          // drop manually if you change rows out-of-band
-$db->disableCache();
+```
+
+`cached()` returns a shallow clone of the model client with the same
+generated type, so PHPStan-aware narrowing (`select`, `include`) keeps
+working. You can also pin the clone to a local variable to reuse it
+across several lookups:
+
+```php
+$users = $db->user->cached();
+$alice = $users->findUnique(['where' => ['id' => 1]]);
+$bob   = $users->findUnique(['where' => ['id' => 2]]);
 ```
 
 The cache is scoped to a single `TehilimClient` instance — it's just an
@@ -307,8 +322,9 @@ in-memory array, no TTL, no cross-request sharing. Build a fresh client
 per HTTP request (or whatever your unit of work is) and the cache lives
 and dies with it. Inspired by Relayer's `CachingDatabase`.
 
-Cache keys are derived from `serialize($args)`, so query args must be
-serializable.
+Relations loaded via `include` are *not* cached automatically — only the
+top-level call you marked with `cached()` is memoized. Cache keys are
+derived from `serialize($args)`, so query args must be serializable.
 
 ## Transactions
 

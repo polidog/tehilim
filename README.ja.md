@@ -260,26 +260,36 @@ $db->user->upsert([
 
 ## リクエストスコープキャッシュ
 
-読み取り (`findUnique` / `findFirst` / `findMany` / `count`) を opt-in でメモ化します。書き込み (`insert` / `update` / `delete` / `upsert` / `insertMany` / `updateMany` / `deleteMany`) は **実行前にキャッシュを丸ごとフラッシュ** するので、同一リクエスト内の read-write-read パターンでも更新が見えます。
+呼び出し単位の opt-in なメモ化です。モデルクライアントに `cached()` を挟むと、その次の `findUnique` / `findFirst` / `findMany` / `count` がリクエストスコープのキャッシュから読み書きします。普通に呼ぶと常に DB へ行きます。書き込み (`insert` / `update` / `delete` / `upsert` / `insertMany` / `updateMany` / `deleteMany`) は **実行前にキャッシュを丸ごとフラッシュ** するので、同一リクエスト内の read-write-read パターンでも更新が見えます。
 
 ```php
-$db = TehilimClient::fromPdo($pdo)->enableCache();
+$db = TehilimClient::fromPdo($pdo);
 
-// 2 回の読みで DB に行くのは 1 回だけ
-$me = $db->user->findUnique(['where' => ['id' => $uid]]);   // miss → 保存
-$me = $db->user->findUnique(['where' => ['id' => $uid]]);   // hit
+// ホットな読み — 明示的にメモ化する
+$me = $db->user->cached()->findUnique(['where' => ['id' => $uid]]);   // miss → 保存
+$me = $db->user->cached()->findUnique(['where' => ['id' => $uid]]);   // hit
+
+// キャッシュしたくない読みは普通に呼ぶだけ
+$fresh = $db->user->findUnique(['where' => ['id' => $uid]]);
 
 $db->user->update(['where' => ['id' => $uid], 'data' => ['name' => 'X']]);
-// この時点でキャッシュは空。次の読みは DB に行く
+// この時点でキャッシュは空。次の cached() 読みは DB に行く
 
-$db->cache()?->hits();      // 観測用
+$db->cache()->hits();       // 観測用
 $db->flushCache();          // 外で行を書き換えた時に手動でドロップ
-$db->disableCache();
+```
+
+`cached()` は元のモデルクライアントを浅くコピーしたインスタンスを返します。生成されたクラスの具体型をそのまま返すので、PHPStan の `select` / `include` ナローイングもそのまま効きます。複数回使う場合は変数に取り回して再利用できます:
+
+```php
+$users = $db->user->cached();
+$alice = $users->findUnique(['where' => ['id' => 1]]);
+$bob   = $users->findUnique(['where' => ['id' => 2]]);
 ```
 
 キャッシュは 1 つの `TehilimClient` インスタンスにスコープされます — 単なる in-memory 配列で、TTL もリクエスト跨ぎの共有もありません。HTTP リクエスト (またはあなたの "unit of work") ごとに新しいクライアントを作れば、キャッシュも一緒に生まれて死にます。Relayer の `CachingDatabase` に着想を得ています。
 
-キャッシュキーは `serialize($args)` から生成されるので、クエリ引数はシリアライズ可能である必要があります。
+`include` 経由でロードされる関連は自動ではキャッシュされません — `cached()` を付けたトップレベルの呼び出しだけがメモ化対象です。キャッシュキーは `serialize($args)` から生成されるので、クエリ引数はシリアライズ可能である必要があります。
 
 ## トランザクション
 

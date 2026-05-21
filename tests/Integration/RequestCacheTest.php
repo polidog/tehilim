@@ -26,21 +26,20 @@ final class RequestCacheTest extends TestCase
         $this->removeDir($this->workDir);
     }
 
-    public function testIdenticalReadsServeFromCache(): void
+    public function testCachedChainServesIdenticalReadsFromMemory(): void
     {
         [$db, $pdo] = $this->makeClient('CacheHit');
-        $db->enableCache();
 
         $db->user->insert(['data' => ['email' => 'a@x']]);
 
-        $first = $db->user->findUnique(['where' => ['email' => 'a@x']]);
+        $first = $db->user->cached()->findUnique(['where' => ['email' => 'a@x']]);
         self::assertNotNull($first);
 
-        // Mutate the row out-of-band (cache shouldn't see this if it's serving from memory)
+        // Mutate the row out-of-band; the cache must keep returning the old value.
         $pdo->prepare('UPDATE "User" SET email = ? WHERE id = ?')
             ->execute(['changed@x', $first['id']]);
 
-        $second = $db->user->findUnique(['where' => ['email' => 'a@x']]);
+        $second = $db->user->cached()->findUnique(['where' => ['email' => 'a@x']]);
         self::assertNotNull($second);
         self::assertSame('a@x', $second['email'], 'should still be the cached value');
 
@@ -48,69 +47,9 @@ final class RequestCacheTest extends TestCase
         self::assertSame(1, $db->cache()->misses());
     }
 
-    public function testWriteFlushesCache(): void
+    public function testCallsWithoutCachedSkipTheCacheEntirely(): void
     {
-        [$db] = $this->makeClient('CacheWrite');
-        $db->enableCache();
-
-        $db->user->insert(['data' => ['email' => 'a@x']]);
-        $beforeCount = $db->user->count();
-        self::assertSame(1, $beforeCount);
-
-        // Cache the row
-        $row = $db->user->findUnique(['where' => ['email' => 'a@x']]);
-        self::assertNotNull($row);
-        $db->user->findUnique(['where' => ['email' => 'a@x']]);
-        self::assertSame(1, $db->cache()->hits());
-
-        // Write through the client should flush everything
-        $db->user->insert(['data' => ['email' => 'b@x']]);
-
-        self::assertSame(2, $db->user->count(), 'count must reflect new row');
-    }
-
-    public function testDistinctArgsCacheSeparately(): void
-    {
-        [$db] = $this->makeClient('CacheArgs');
-        $db->enableCache();
-
-        $db->user->insertMany(['data' => [
-            ['email' => 'a@x', 'name' => 'A'],
-            ['email' => 'b@x', 'name' => 'B'],
-        ]]);
-
-        $first  = $db->user->findUnique(['where' => ['email' => 'a@x']]);
-        $second = $db->user->findUnique(['where' => ['email' => 'b@x']]);
-        self::assertSame('A', $first['name']);
-        self::assertSame('B', $second['name']);
-
-        // Re-issue the same two reads
-        $db->user->findUnique(['where' => ['email' => 'a@x']]);
-        $db->user->findUnique(['where' => ['email' => 'b@x']]);
-
-        self::assertSame(2, $db->cache()->hits());
-    }
-
-    public function testManualFlushDropsAllEntries(): void
-    {
-        [$db, $pdo] = $this->makeClient('CacheManualFlush');
-        $db->enableCache();
-
-        $db->user->insert(['data' => ['email' => 'a@x']]);
-        $row = $db->user->findUnique(['where' => ['email' => 'a@x']]);
-        self::assertNotNull($row);
-
-        $pdo->prepare('UPDATE "User" SET email = ? WHERE id = ?')
-            ->execute(['changed@x', $row['id']]);
-
-        $db->flushCache();
-        $after = $db->user->findUnique(['where' => ['email' => 'a@x']]);
-        self::assertNull($after, 'flush should make us see the out-of-band change');
-    }
-
-    public function testCacheIsOffByDefault(): void
-    {
-        [$db, $pdo] = $this->makeClient('CacheOff');
+        [$db, $pdo] = $this->makeClient('CacheSkip');
 
         $db->user->insert(['data' => ['email' => 'a@x']]);
         $row = $db->user->findUnique(['where' => ['email' => 'a@x']]);
@@ -120,8 +59,100 @@ final class RequestCacheTest extends TestCase
             ->execute(['changed@x', $row['id']]);
 
         $second = $db->user->findUnique(['where' => ['email' => 'a@x']]);
-        self::assertNull($second, 'without cache, the update is visible');
-        self::assertNull($db->cache());
+        self::assertNull($second, 'plain findUnique must always go to the DB');
+
+        // Plain reads do not touch the cache at all.
+        self::assertSame(0, $db->cache()->hits());
+        self::assertSame(0, $db->cache()->misses());
+        self::assertSame(0, $db->cache()->writes());
+    }
+
+    public function testWriteFlushesEntriesAcrossCachedClones(): void
+    {
+        [$db] = $this->makeClient('CacheWrite');
+
+        $db->user->insert(['data' => ['email' => 'a@x']]);
+
+        // Seed two distinct entries on a cached() clone so we can observe
+        // whether the post-write reads come back as misses.
+        $cached = $db->user->cached();
+        $row = $cached->findUnique(['where' => ['email' => 'a@x']]);
+        self::assertNotNull($row);
+        self::assertSame(1, $cached->count());
+
+        // Confirm both entries are live: re-issuing the same calls hits the cache.
+        $cached->findUnique(['where' => ['email' => 'a@x']]);
+        $cached->count();
+        self::assertSame(2, $db->cache()->hits());
+        $missesBeforeWrite = $db->cache()->misses();
+
+        // Any write through the root flushes everything — including entries
+        // stored by sibling cached() clones.
+        $db->user->insert(['data' => ['email' => 'b@x']]);
+
+        // The two reads must now miss (flush wiped them) and return fresh values.
+        self::assertSame(2, $cached->count(), 'count must reflect new row');
+        $reloaded = $cached->findUnique(['where' => ['email' => 'a@x']]);
+        self::assertNotNull($reloaded);
+        self::assertSame(
+            $missesBeforeWrite + 2,
+            $db->cache()->misses(),
+            'both previously cached entries should miss after the write flush',
+        );
+        self::assertSame(2, $db->cache()->hits(), 'no new hits should have happened post-flush');
+    }
+
+    public function testDistinctArgsCacheSeparately(): void
+    {
+        [$db] = $this->makeClient('CacheArgs');
+
+        $db->user->insertMany(['data' => [
+            ['email' => 'a@x', 'name' => 'A'],
+            ['email' => 'b@x', 'name' => 'B'],
+        ]]);
+
+        $cached = $db->user->cached();
+        $first  = $cached->findUnique(['where' => ['email' => 'a@x']]);
+        $second = $cached->findUnique(['where' => ['email' => 'b@x']]);
+        self::assertSame('A', $first['name']);
+        self::assertSame('B', $second['name']);
+
+        $cached->findUnique(['where' => ['email' => 'a@x']]);
+        $cached->findUnique(['where' => ['email' => 'b@x']]);
+
+        self::assertSame(2, $db->cache()->hits());
+    }
+
+    public function testCachedClientIsAliasedToOriginal(): void
+    {
+        [$db] = $this->makeClient('CacheAlias');
+
+        $db->user->insert(['data' => ['email' => 'a@x']]);
+
+        // Storing once via cached() — a plain read does not see the entry,
+        // a second cached() read does.
+        $db->user->cached()->findUnique(['where' => ['email' => 'a@x']]);
+        $db->user->findUnique(['where' => ['email' => 'a@x']]);
+        $db->user->cached()->findUnique(['where' => ['email' => 'a@x']]);
+
+        self::assertSame(1, $db->cache()->hits());
+        self::assertSame(1, $db->cache()->misses());
+    }
+
+    public function testManualFlushDropsAllEntries(): void
+    {
+        [$db, $pdo] = $this->makeClient('CacheManualFlush');
+
+        $db->user->insert(['data' => ['email' => 'a@x']]);
+        $row = $db->user->cached()->findUnique(['where' => ['email' => 'a@x']]);
+        self::assertNotNull($row);
+
+        $pdo->prepare('UPDATE "User" SET email = ? WHERE id = ?')
+            ->execute(['changed@x', $row['id']]);
+
+        $db->flushCache();
+        $after = $db->user->cached()->findUnique(['where' => ['email' => 'a@x']]);
+        self::assertNull($after, 'flush should make us see the out-of-band change');
     }
 
     /**
