@@ -19,7 +19,9 @@ final class TehilimClient extends BaseClient
     {
         parent::__construct($driver);
         $this->user = new UserClient($driver);
+        $this->registerModel('User', $this->user);
         $this->post = new PostClient($driver);
+        $this->registerModel('Post', $this->post);
     }
 
     public static function connect(Config $config): self

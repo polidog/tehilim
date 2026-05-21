@@ -5,14 +5,18 @@ declare(strict_types=1);
 namespace Example\Blog\Generated\Model;
 
 use Polidog\Tehilim\Client\BaseModelClient;
+use Polidog\Tehilim\Client\Relation;
 
 /**
- * @phpstan-type UserRow array{id: int, email: string, name: string|null, createdAt: \DateTimeImmutable}
+ * @phpstan-import-type PostRow from \Example\Blog\Generated\Model\PostClient
+ * @phpstan-type UserRow array{id: int, email: string, name: string|null, createdAt: \DateTimeImmutable, posts?: list<PostRow>}
  * @phpstan-type UserCreateInput array{id?: int, email: string, name?: string|null, createdAt?: \DateTimeImmutable}
  * @phpstan-type UserUpdateInput array{id?: int, email?: string, name?: string|null, createdAt?: \DateTimeImmutable}
  * @phpstan-type UserWhereUnique array{id?: int, email?: string}
  * @phpstan-type UserWhereInput array<string,mixed>
  * @phpstan-type UserOrderBy array<string,'asc'|'desc'>|list<array<string,'asc'|'desc'>>
+ * @phpstan-type UserInclude array{posts?: bool|array{where?: array<string,mixed>, take?: int, skip?: int}}
+ * @phpstan-type UserSelect array{id?: bool, email?: bool, name?: bool, createdAt?: bool, posts?: bool}
  */
 final class UserClient extends BaseModelClient
 {
@@ -38,8 +42,17 @@ final class UserClient extends BaseModelClient
         return ['id' => 'int', 'email' => 'string', 'name' => 'string', 'createdAt' => 'DateTime'];
     }
 
+    /** @return array<string, Relation> */
+    protected function relations(): array
+    {
+        return [
+            'posts' => new Relation('hasMany', 'Post', ['id'], ['authorId']),
+        ];
+    }
+
+
     /**
-     * @param array{where: UserWhereUnique} $args
+     * @param array{where: UserWhereUnique, include?: UserInclude, select?: UserSelect} $args
      * @return UserRow|null
      */
     public function findUnique(array $args): ?array
@@ -48,7 +61,7 @@ final class UserClient extends BaseModelClient
     }
 
     /**
-     * @param array{where?: UserWhereInput, orderBy?: UserOrderBy, take?: int, skip?: int} $args
+     * @param array{where?: UserWhereInput, orderBy?: UserOrderBy, take?: int, skip?: int, include?: UserInclude, select?: UserSelect} $args
      * @return UserRow|null
      */
     public function findFirst(array $args = []): ?array
@@ -57,7 +70,7 @@ final class UserClient extends BaseModelClient
     }
 
     /**
-     * @param array{where?: UserWhereInput, orderBy?: UserOrderBy, take?: int, skip?: int} $args
+     * @param array{where?: UserWhereInput, orderBy?: UserOrderBy, take?: int, skip?: int, include?: UserInclude, select?: UserSelect} $args
      * @return list<UserRow>
      */
     public function findMany(array $args = []): array

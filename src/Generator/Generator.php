@@ -4,18 +4,24 @@ declare(strict_types=1);
 
 namespace Polidog\Tehilim\Generator;
 
+use Polidog\Tehilim\Client\Relation;
 use Polidog\Tehilim\Schema\Ast\Field;
 use Polidog\Tehilim\Schema\Ast\Model;
 use Polidog\Tehilim\Schema\Ast\Schema;
+use Polidog\Tehilim\Schema\RelationResolver;
 
 final class Generator
 {
+    private readonly RelationResolver $resolver;
+
     public function __construct(
         private readonly Schema $schema,
         private readonly string $outputDir,
         private readonly string $namespace,
         private readonly string $clientClass = 'TehilimClient',
-    ) {}
+    ) {
+        $this->resolver = new RelationResolver($schema);
+    }
 
     public function generate(): void
     {
@@ -47,6 +53,7 @@ final class Generator
             $uses .= "use {$this->namespace}\\Model\\{$cls};\n";
             $properties .= "    public readonly {$cls} \${$prop};\n";
             $assigns .= "        \$this->{$prop} = new {$cls}(\$driver);\n";
+            $assigns .= "        \$this->registerModel('{$m->name}', \$this->{$prop});\n";
         }
 
         return <<<PHP
@@ -81,10 +88,15 @@ PHP;
         $pk = $model->primaryKey();
         $pkName = $pk?->columnName();
 
-        $rowShape = $this->rowShape($model);
+        $relations = $this->resolveRelations($model);
+
+        $imports = $this->renderTypeImports($relations);
+        $rowShape = $this->rowShape($model, $relations);
         $createShape = $this->createInputShape($model);
         $updateShape = $this->updateInputShape($model);
         $whereUniqueShape = $this->whereUniqueShape($model);
+        $includeShape = $this->includeShape($name, $relations);
+        $selectShape = $this->selectShape($model, $relations);
 
         $columnsArray = $this->phpArrayList(array_map(
             static fn (Field $f): string => $f->columnName(),
@@ -98,6 +110,10 @@ PHP;
 
         $primaryConst = $pkName === null ? 'null' : var_export($pkName, true);
 
+        $relationsMethod = $this->renderRelationsMethod($relations);
+
+        $extraImports = $relations === [] ? '' : "\nuse Polidog\\Tehilim\\Client\\Relation;";
+
         return <<<PHP
 <?php
 
@@ -105,15 +121,17 @@ declare(strict_types=1);
 
 namespace {$this->namespace}\\Model;
 
-use Polidog\\Tehilim\\Client\\BaseModelClient;
+use Polidog\\Tehilim\\Client\\BaseModelClient;{$extraImports}
 
 /**
- * @phpstan-type {$name}Row {$rowShape}
+{$imports} * @phpstan-type {$name}Row {$rowShape}
  * @phpstan-type {$name}CreateInput {$createShape}
  * @phpstan-type {$name}UpdateInput {$updateShape}
  * @phpstan-type {$name}WhereUnique {$whereUniqueShape}
  * @phpstan-type {$name}WhereInput array<string,mixed>
  * @phpstan-type {$name}OrderBy array<string,'asc'|'desc'>|list<array<string,'asc'|'desc'>>
+ * @phpstan-type {$name}Include {$includeShape}
+ * @phpstan-type {$name}Select {$selectShape}
  */
 final class {$name}Client extends BaseModelClient
 {
@@ -139,8 +157,9 @@ final class {$name}Client extends BaseModelClient
         return {$columnTypesArray};
     }
 
+{$relationsMethod}
     /**
-     * @param array{where: {$name}WhereUnique} \$args
+     * @param array{where: {$name}WhereUnique, include?: {$name}Include, select?: {$name}Select} \$args
      * @return {$name}Row|null
      */
     public function findUnique(array \$args): ?array
@@ -149,7 +168,7 @@ final class {$name}Client extends BaseModelClient
     }
 
     /**
-     * @param array{where?: {$name}WhereInput, orderBy?: {$name}OrderBy, take?: int, skip?: int} \$args
+     * @param array{where?: {$name}WhereInput, orderBy?: {$name}OrderBy, take?: int, skip?: int, include?: {$name}Include, select?: {$name}Select} \$args
      * @return {$name}Row|null
      */
     public function findFirst(array \$args = []): ?array
@@ -158,7 +177,7 @@ final class {$name}Client extends BaseModelClient
     }
 
     /**
-     * @param array{where?: {$name}WhereInput, orderBy?: {$name}OrderBy, take?: int, skip?: int} \$args
+     * @param array{where?: {$name}WhereInput, orderBy?: {$name}OrderBy, take?: int, skip?: int, include?: {$name}Include, select?: {$name}Select} \$args
      * @return list<{$name}Row>
      */
     public function findMany(array \$args = []): array
@@ -205,11 +224,59 @@ final class {$name}Client extends BaseModelClient
 PHP;
     }
 
-    private function rowShape(Model $model): string
+    /**
+     * @return array<string, array{relation:Relation, field:Field}>
+     */
+    private function resolveRelations(Model $model): array
+    {
+        $out = [];
+        foreach ($model->relationFields() as $field) {
+            try {
+                $rel = $this->resolver->resolve($model, $field);
+            } catch (\Throwable) {
+                continue;
+            }
+            $out[$field->name] = ['relation' => $rel, 'field' => $field];
+        }
+        return $out;
+    }
+
+    /**
+     * @param array<string, array{relation:Relation, field:Field}> $relations
+     */
+    private function renderTypeImports(array $relations): string
+    {
+        if ($relations === []) {
+            return '';
+        }
+        $seen = [];
+        $lines = '';
+        foreach ($relations as $info) {
+            $target = $info['relation']->target;
+            if (isset($seen[$target])) {
+                continue;
+            }
+            $seen[$target] = true;
+            $fqcn = $this->namespace . '\\Model\\' . $target . 'Client';
+            $lines .= " * @phpstan-import-type {$target}Row from \\{$fqcn}\n";
+        }
+        return $lines;
+    }
+
+    /**
+     * @param array<string, array{relation:Relation, field:Field}> $relations
+     */
+    private function rowShape(Model $model, array $relations): string
     {
         $parts = [];
         foreach ($model->scalarFields() as $f) {
             $parts[] = "{$f->columnName()}: " . TypeFormatter::phpType($f);
+        }
+        foreach ($relations as $name => $info) {
+            $rel = $info['relation'];
+            $relatedRow = $rel->target . 'Row';
+            $type = $rel->isList() ? "list<{$relatedRow}>" : "{$relatedRow}|null";
+            $parts[] = "{$name}?: " . $type;
         }
         return 'array{' . implode(', ', $parts) . '}';
     }
@@ -246,13 +313,80 @@ PHP;
         return 'array{' . implode(', ', $parts) . '}';
     }
 
+    /**
+     * @param array<string, array{relation:Relation, field:Field}> $relations
+     */
+    private function includeShape(string $modelName, array $relations): string
+    {
+        if ($relations === []) {
+            return 'array{}';
+        }
+        $parts = [];
+        foreach ($relations as $name => $_info) {
+            $sub = 'array{where?: array<string,mixed>, take?: int, skip?: int}';
+            $parts[] = "{$name}?: bool|{$sub}";
+        }
+        return 'array{' . implode(', ', $parts) . '}';
+    }
+
+    /**
+     * @param array<string, array{relation:Relation, field:Field}> $relations
+     */
+    private function selectShape(Model $model, array $relations): string
+    {
+        $parts = [];
+        foreach ($model->scalarFields() as $f) {
+            $parts[] = $f->columnName() . '?: bool';
+        }
+        foreach ($relations as $name => $_info) {
+            $parts[] = $name . '?: bool';
+        }
+        return 'array{' . implode(', ', $parts) . '}';
+    }
+
+    /**
+     * @param array<string, array{relation:Relation, field:Field}> $relations
+     */
+    private function renderRelationsMethod(array $relations): string
+    {
+        if ($relations === []) {
+            return '';
+        }
+        $entries = [];
+        foreach ($relations as $name => $info) {
+            $r = $info['relation'];
+            $local = $this->phpArrayList($r->localFields);
+            $foreign = $this->phpArrayList($r->foreignFields);
+            $entries[] = sprintf(
+                "            '%s' => new Relation('%s', '%s', %s, %s),",
+                $name,
+                $r->kind,
+                $r->target,
+                $local,
+                $foreign,
+            );
+        }
+        $body = implode("\n", $entries);
+
+        return <<<PHP
+    /** @return array<string, Relation> */
+    protected function relations(): array
+    {
+        return [
+{$body}
+        ];
+    }
+
+
+PHP;
+    }
+
     private function isCreateOptional(Field $f): bool
     {
         if ($f->nullable) {
             return true;
         }
-        $default = $f->attribute('default');
-        if ($default !== null) {
+        if ($f->attribute('default') !== null) {
             return true;
         }
         return false;
@@ -266,7 +400,7 @@ PHP;
         if ($list === []) {
             return '[]';
         }
-        return "[" . implode(', ', array_map(static fn (string $v): string => var_export($v, true), $list)) . "]";
+        return '[' . implode(', ', array_map(static fn (string $v): string => var_export($v, true), $list)) . ']';
     }
 
     /**

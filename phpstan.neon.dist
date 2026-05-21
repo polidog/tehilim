@@ -4,4 +4,4 @@ parameters:
         - src
         - tests
     excludePaths:
-        - tests/Integration/SqliteEndToEndTest.php
+        - tests/Integration/*

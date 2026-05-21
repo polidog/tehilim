@@ -15,10 +15,16 @@ use Polidog\Tehilim\Query\WhereCompiler;
 abstract class BaseModelClient
 {
     private readonly WhereCompiler $whereCompiler;
+    protected ?BaseClient $root = null;
 
     public function __construct(protected readonly Driver $driver)
     {
         $this->whereCompiler = new WhereCompiler();
+    }
+
+    public function bindRoot(BaseClient $root): void
+    {
+        $this->root = $root;
     }
 
     abstract protected function table(): string;
@@ -31,8 +37,14 @@ abstract class BaseModelClient
     /** @return array<string,string> */
     abstract protected function columnTypes(): array;
 
+    /** @return array<string, Relation> */
+    protected function relations(): array
+    {
+        return [];
+    }
+
     /**
-     * @param array{where: array<string,mixed>} $args
+     * @param array{where: array<string,mixed>, include?: array<string,mixed>, select?: array<string,bool>} $args
      * @return array<string,mixed>|null
      */
     protected function doFindUnique(array $args): ?array
@@ -41,7 +53,7 @@ abstract class BaseModelClient
     }
 
     /**
-     * @param array{where?: array<string,mixed>, orderBy?: array<string,string>|list<array<string,string>>, take?: int, skip?: int} $args
+     * @param array{where?: array<string,mixed>, orderBy?: array<string,string>|list<array<string,string>>, take?: int, skip?: int, include?: array<string,mixed>, select?: array<string,bool>} $args
      * @return array<string,mixed>|null
      */
     protected function doFindFirst(array $args): ?array
@@ -52,16 +64,18 @@ abstract class BaseModelClient
     }
 
     /**
-     * @param array{where?: array<string,mixed>, orderBy?: array<string,string>|list<array<string,string>>, take?: int, skip?: int} $args
+     * @param array{where?: array<string,mixed>, orderBy?: array<string,string>|list<array<string,string>>, take?: int, skip?: int, include?: array<string,mixed>, select?: array<string,bool>} $args
      * @return list<array<string,mixed>>
      */
     protected function doFindMany(array $args = []): array
     {
+        $select = $this->resolveSelect($args['select'] ?? null);
+
         [$whereSql, $params] = $this->compileWhere($args['where'] ?? []);
 
         $sql = sprintf(
             'SELECT %s FROM %s WHERE %s',
-            $this->selectColumns(),
+            $this->selectColumns($select),
             $this->driver->quoteIdent($this->table()),
             $whereSql,
         );
@@ -84,6 +98,12 @@ abstract class BaseModelClient
             /** @var array<string,mixed> $row */
             $out[] = $this->castRow($row);
         }
+
+        $include = $args['include'] ?? null;
+        if (is_array($include) && $out !== []) {
+            $out = $this->attachIncludes($out, $include);
+        }
+
         return $out;
     }
 
@@ -189,6 +209,96 @@ abstract class BaseModelClient
     }
 
     /**
+     * @param list<array<string,mixed>> $rows
+     * @param array<string,mixed>       $include
+     * @return list<array<string,mixed>>
+     */
+    private function attachIncludes(array $rows, array $include): array
+    {
+        $relations = $this->relations();
+        foreach ($include as $name => $spec) {
+            if ($spec === false) {
+                continue;
+            }
+            $relation = $relations[$name]
+                ?? throw new \InvalidArgumentException("Unknown relation '{$name}' on " . $this->table());
+
+            /** @var array<string,mixed> $subArgs */
+            $subArgs = $spec === true ? [] : (array) $spec;
+            $rows = $this->loadRelation($rows, $name, $relation, $subArgs);
+        }
+        return $rows;
+    }
+
+    /**
+     * @param list<array<string,mixed>>  $rows
+     * @param array<string,mixed>        $subArgs
+     * @return list<array<string,mixed>>
+     */
+    private function loadRelation(array $rows, string $name, Relation $relation, array $subArgs): array
+    {
+        if (count($relation->localFields) !== 1 || count($relation->foreignFields) !== 1) {
+            throw new \LogicException("Composite-key relations are not supported in v1 (relation '{$name}')");
+        }
+        $localField = $relation->localFields[0];
+        $foreignField = $relation->foreignFields[0];
+
+        $ids = [];
+        foreach ($rows as $row) {
+            $v = $row[$localField] ?? null;
+            if ($v !== null) {
+                $ids[] = $v;
+            }
+        }
+        $ids = array_values(array_unique($ids, SORT_REGULAR));
+
+        if ($ids === []) {
+            return $this->emptyRelationFill($rows, $name, $relation);
+        }
+
+        if ($this->root === null) {
+            throw new \LogicException('include requires root client; was the model registered?');
+        }
+
+        $targetClient = $this->root->modelClient($relation->target);
+
+        $where = $subArgs['where'] ?? [];
+        $where[$foreignField] = ['in' => $ids];
+        $subArgs['where'] = $where;
+
+        $related = $targetClient->doFindMany($subArgs);
+
+        $byKey = [];
+        foreach ($related as $r) {
+            $k = $r[$foreignField] ?? null;
+            if ($k === null) {
+                continue;
+            }
+            $byKey[(string) $k][] = $r;
+        }
+
+        foreach ($rows as $i => $row) {
+            $k = $row[$localField] ?? null;
+            $matches = $k === null ? [] : ($byKey[(string) $k] ?? []);
+            $rows[$i][$name] = $relation->isList() ? $matches : ($matches[0] ?? null);
+        }
+
+        return $rows;
+    }
+
+    /**
+     * @param list<array<string,mixed>> $rows
+     * @return list<array<string,mixed>>
+     */
+    private function emptyRelationFill(array $rows, string $name, Relation $relation): array
+    {
+        foreach ($rows as $i => $_) {
+            $rows[$i][$name] = $relation->isList() ? [] : null;
+        }
+        return $rows;
+    }
+
+    /**
      * @param array<string,mixed> $where
      * @return array{0:string,1:list<mixed>}
      */
@@ -197,13 +307,45 @@ abstract class BaseModelClient
         return $this->whereCompiler->compile($where, $this->driver, $this->columnTypes());
     }
 
-    private function selectColumns(): string
+    /**
+     * @param array<string,bool>|null $select
+     * @return list<string>
+     */
+    private function resolveSelect(?array $select): array
     {
-        $cols = $this->columns();
-        if ($cols === []) {
+        if ($select === null) {
+            return $this->columns();
+        }
+        $picked = [];
+        $valid = array_flip($this->columns());
+        foreach ($select as $col => $on) {
+            if (!$on) {
+                continue;
+            }
+            if (!isset($valid[$col])) {
+                continue;
+            }
+            $picked[] = $col;
+        }
+        if ($picked === []) {
+            return $this->columns();
+        }
+        $pk = $this->primaryKey();
+        if ($pk !== null && !in_array($pk, $picked, true)) {
+            $picked[] = $pk;
+        }
+        return $picked;
+    }
+
+    /**
+     * @param list<string> $columns
+     */
+    private function selectColumns(array $columns): string
+    {
+        if ($columns === []) {
             return '*';
         }
-        return implode(', ', array_map($this->driver->quoteIdent(...), $cols));
+        return implode(', ', array_map($this->driver->quoteIdent(...), $columns));
     }
 
     /**

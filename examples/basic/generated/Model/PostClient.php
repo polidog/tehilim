@@ -5,14 +5,18 @@ declare(strict_types=1);
 namespace Example\Blog\Generated\Model;
 
 use Polidog\Tehilim\Client\BaseModelClient;
+use Polidog\Tehilim\Client\Relation;
 
 /**
- * @phpstan-type PostRow array{id: int, title: string, body: string|null, published: bool, authorId: int, createdAt: \DateTimeImmutable}
+ * @phpstan-import-type UserRow from \Example\Blog\Generated\Model\UserClient
+ * @phpstan-type PostRow array{id: int, title: string, body: string|null, published: bool, authorId: int, createdAt: \DateTimeImmutable, author?: UserRow|null}
  * @phpstan-type PostCreateInput array{id?: int, title: string, body?: string|null, published?: bool, authorId: int, createdAt?: \DateTimeImmutable}
  * @phpstan-type PostUpdateInput array{id?: int, title?: string, body?: string|null, published?: bool, authorId?: int, createdAt?: \DateTimeImmutable}
  * @phpstan-type PostWhereUnique array{id?: int}
  * @phpstan-type PostWhereInput array<string,mixed>
  * @phpstan-type PostOrderBy array<string,'asc'|'desc'>|list<array<string,'asc'|'desc'>>
+ * @phpstan-type PostInclude array{author?: bool|array{where?: array<string,mixed>, take?: int, skip?: int}}
+ * @phpstan-type PostSelect array{id?: bool, title?: bool, body?: bool, published?: bool, authorId?: bool, createdAt?: bool, author?: bool}
  */
 final class PostClient extends BaseModelClient
 {
@@ -38,8 +42,17 @@ final class PostClient extends BaseModelClient
         return ['id' => 'int', 'title' => 'string', 'body' => 'string', 'published' => 'bool', 'authorId' => 'int', 'createdAt' => 'DateTime'];
     }
 
+    /** @return array<string, Relation> */
+    protected function relations(): array
+    {
+        return [
+            'author' => new Relation('belongsTo', 'User', ['authorId'], ['id']),
+        ];
+    }
+
+
     /**
-     * @param array{where: PostWhereUnique} $args
+     * @param array{where: PostWhereUnique, include?: PostInclude, select?: PostSelect} $args
      * @return PostRow|null
      */
     public function findUnique(array $args): ?array
@@ -48,7 +61,7 @@ final class PostClient extends BaseModelClient
     }
 
     /**
-     * @param array{where?: PostWhereInput, orderBy?: PostOrderBy, take?: int, skip?: int} $args
+     * @param array{where?: PostWhereInput, orderBy?: PostOrderBy, take?: int, skip?: int, include?: PostInclude, select?: PostSelect} $args
      * @return PostRow|null
      */
     public function findFirst(array $args = []): ?array
@@ -57,7 +70,7 @@ final class PostClient extends BaseModelClient
     }
 
     /**
-     * @param array{where?: PostWhereInput, orderBy?: PostOrderBy, take?: int, skip?: int} $args
+     * @param array{where?: PostWhereInput, orderBy?: PostOrderBy, take?: int, skip?: int, include?: PostInclude, select?: PostSelect} $args
      * @return list<PostRow>
      */
     public function findMany(array $args = []): array

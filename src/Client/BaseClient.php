@@ -8,6 +8,9 @@ use Polidog\Tehilim\Driver\Driver;
 
 abstract class BaseClient
 {
+    /** @var array<string, BaseModelClient> */
+    private array $clients = [];
+
     public function __construct(public readonly Driver $driver)
     {
     }
@@ -24,5 +27,17 @@ abstract class BaseClient
             $pdo->rollBack();
             throw $e;
         }
+    }
+
+    protected function registerModel(string $name, BaseModelClient $client): void
+    {
+        $this->clients[$name] = $client;
+        $client->bindRoot($this);
+    }
+
+    public function modelClient(string $name): BaseModelClient
+    {
+        return $this->clients[$name]
+            ?? throw new \InvalidArgumentException("No client registered for model '{$name}'");
     }
 }

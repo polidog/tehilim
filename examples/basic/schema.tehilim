@@ -15,6 +15,7 @@ model User {
   email     String   @unique
   name      String?
   createdAt DateTime @default(now())
+  posts     Post[]
 }
 
 model Post {
@@ -23,5 +24,6 @@ model Post {
   body      String?
   published Boolean  @default(false)
   authorId  Int
+  author    User     @relation(fields: [authorId], references: [id])
   createdAt DateTime @default(now())
 }
