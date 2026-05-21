@@ -32,8 +32,8 @@ final class TransactionTest extends TestCase
         $db = $this->makeClient('Tx1');
 
         $created = $db->transaction(function ($tx) {
-            $u = $tx->user->create(['data' => ['email' => 'a@x']]);
-            $tx->user->create(['data' => ['email' => 'b@x']]);
+            $u = $tx->user->insert(['data' => ['email' => 'a@x']]);
+            $tx->user->insert(['data' => ['email' => 'b@x']]);
             return $u;
         });
 
@@ -48,7 +48,7 @@ final class TransactionTest extends TestCase
         $threw = false;
         try {
             $db->transaction(function ($tx) {
-                $tx->user->create(['data' => ['email' => 'a@x']]);
+                $tx->user->insert(['data' => ['email' => 'a@x']]);
                 throw new \RuntimeException('boom');
             });
         } catch (\RuntimeException $e) {
@@ -65,7 +65,7 @@ final class TransactionTest extends TestCase
         $db = $this->makeClient('Tx3');
 
         $result = $db->transaction(function ($tx) {
-            $tx->user->create(['data' => ['email' => 'a@x']]);
+            $tx->user->insert(['data' => ['email' => 'a@x']]);
             throw new Rollback('discarded');
         });
 
@@ -78,18 +78,18 @@ final class TransactionTest extends TestCase
         $db = $this->makeClient('Tx4');
 
         $db->transaction(function ($tx) {
-            $tx->user->create(['data' => ['email' => 'outer@x']]);
+            $tx->user->insert(['data' => ['email' => 'outer@x']]);
 
             try {
                 $tx->transaction(function ($tx2) {
-                    $tx2->user->create(['data' => ['email' => 'inner@x']]);
+                    $tx2->user->insert(['data' => ['email' => 'inner@x']]);
                     throw new \RuntimeException('inner fail');
                 });
             } catch (\RuntimeException) {
                 // inner rolled back, outer keeps going
             }
 
-            $tx->user->create(['data' => ['email' => 'after@x']]);
+            $tx->user->insert(['data' => ['email' => 'after@x']]);
         });
 
         $emails = array_column(
@@ -104,9 +104,9 @@ final class TransactionTest extends TestCase
         $db = $this->makeClient('Tx5');
 
         $db->transaction(function ($tx) {
-            $tx->user->create(['data' => ['email' => 'outer@x']]);
+            $tx->user->insert(['data' => ['email' => 'outer@x']]);
             $tx->transaction(function ($tx2) {
-                $tx2->user->create(['data' => ['email' => 'inner@x']]);
+                $tx2->user->insert(['data' => ['email' => 'inner@x']]);
             });
         });
 

@@ -16,18 +16,18 @@ $db = TehilimClient::fromPdo($pdo);
 // Or if you'd rather have Tehilim parse a URL for you:
 // $db = TehilimClient::fromUrl('sqlite:' . __DIR__ . '/blog.sqlite');
 
-$alice = $db->user->create(['data' => [
+$alice = $db->user->insert(['data' => [
     'email' => 'alice@example.com',
     'name'  => 'Alice',
 ]]);
-$bob = $db->user->create(['data' => [
+$bob = $db->user->insert(['data' => [
     'email' => 'bob@example.com',
     'name'  => 'Bob',
 ]]);
 
-$db->post->create(['data' => ['title' => 'Hello, Tehilim', 'body' => 'First post.', 'authorId' => $alice['id'], 'published' => true]]);
-$db->post->create(['data' => ['title' => 'Draft',          'authorId' => $alice['id']]]);
-$db->post->create(['data' => ['title' => 'Bob has thoughts','authorId' => $bob['id'],   'published' => true]]);
+$db->post->insert(['data' => ['title' => 'Hello, Tehilim', 'body' => 'First post.', 'authorId' => $alice['id'], 'published' => true]]);
+$db->post->insert(['data' => ['title' => 'Draft',          'authorId' => $alice['id']]]);
+$db->post->insert(['data' => ['title' => 'Bob has thoughts','authorId' => $bob['id'],   'published' => true]]);
 
 echo "-- users with posts --\n";
 $usersWithPosts = $db->user->findMany([

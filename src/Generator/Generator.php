@@ -115,7 +115,7 @@ PHP;
 
         $imports = $this->renderTypeImports($relations);
         $rowShape = $this->rowShape($model, $relations);
-        $createShape = $this->createInputShape($model);
+        $insertShape = $this->insertInputShape($model);
         $updateShape = $this->updateInputShape($model);
         $whereUniqueShape = $this->whereUniqueShape($model);
         $includeShape = $this->includeShape($name, $relations);
@@ -148,7 +148,7 @@ use Polidog\\Tehilim\\Client\\BaseModelClient;{$extraImports}
 
 /**
 {$imports} * @phpstan-type {$name}Row {$rowShape}
- * @phpstan-type {$name}CreateInput {$createShape}
+ * @phpstan-type {$name}InsertInput {$insertShape}
  * @phpstan-type {$name}UpdateInput {$updateShape}
  * @phpstan-type {$name}WhereUnique {$whereUniqueShape}
  * @phpstan-type {$name}WhereInput array<string,mixed>
@@ -209,12 +209,12 @@ final class {$name}Client extends BaseModelClient
     }
 
     /**
-     * @param array{data: {$name}CreateInput} \$args
+     * @param array{data: {$name}InsertInput} \$args
      * @return {$name}Row
      */
-    public function create(array \$args): array
+    public function insert(array \$args): array
     {
-        return \$this->doCreate(\$args);
+        return \$this->doInsert(\$args);
     }
 
     /**
@@ -244,7 +244,7 @@ final class {$name}Client extends BaseModelClient
     }
 
     /**
-     * @param array{where: {$name}WhereUnique, update: {$name}UpdateInput, create: {$name}CreateInput} \$args
+     * @param array{where: {$name}WhereUnique, update: {$name}UpdateInput, insert: {$name}InsertInput} \$args
      * @return {$name}Row
      */
     public function upsert(array \$args): array
@@ -253,12 +253,12 @@ final class {$name}Client extends BaseModelClient
     }
 
     /**
-     * @param array{data: list<{$name}CreateInput>, skipDuplicates?: bool} \$args
+     * @param array{data: list<{$name}InsertInput>, skipDuplicates?: bool} \$args
      * @return array{count: int}
      */
-    public function createMany(array \$args): array
+    public function insertMany(array \$args): array
     {
-        return \$this->doCreateMany(\$args);
+        return \$this->doInsertMany(\$args);
     }
 
     /**
@@ -340,11 +340,11 @@ PHP;
         return 'array{' . implode(', ', $parts) . '}';
     }
 
-    private function createInputShape(Model $model): string
+    private function insertInputShape(Model $model): string
     {
         $parts = [];
         foreach ($model->scalarFields() as $f) {
-            $optional = $this->isCreateOptional($f);
+            $optional = $this->isInsertOptional($f);
             $key = $f->columnName() . ($optional ? '?' : '');
             $parts[] = $key . ': ' . TypeFormatter::phpType($f);
         }
@@ -466,7 +466,7 @@ PHP;
 PHP;
     }
 
-    private function isCreateOptional(Field $f): bool
+    private function isInsertOptional(Field $f): bool
     {
         if ($f->nullable) {
             return true;

@@ -123,7 +123,7 @@ abstract class BaseModelClient
      * @param array{data: array<string,mixed>} $args
      * @return array<string,mixed>
      */
-    protected function doCreate(array $args): array
+    protected function doInsert(array $args): array
     {
         $this->root?->flushCache();
         $data = $args['data'];
@@ -207,7 +207,7 @@ abstract class BaseModelClient
     }
 
     /**
-     * @param array{where: array<string,mixed>, update: array<string,mixed>, create: array<string,mixed>} $args
+     * @param array{where: array<string,mixed>, update: array<string,mixed>, insert: array<string,mixed>} $args
      * @return array<string,mixed>
      */
     protected function doUpsert(array $args): array
@@ -217,14 +217,14 @@ abstract class BaseModelClient
         if ($existing !== null) {
             return $this->doUpdate(['where' => $args['where'], 'data' => $args['update']]);
         }
-        return $this->doCreate(['data' => $args['create']]);
+        return $this->doInsert(['data' => $args['insert']]);
     }
 
     /**
      * @param array{data: list<array<string,mixed>>, skipDuplicates?: bool} $args
      * @return array{count: int}
      */
-    protected function doCreateMany(array $args): array
+    protected function doInsertMany(array $args): array
     {
         $this->root?->flushCache();
         $rows = $args['data'];

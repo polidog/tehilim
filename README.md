@@ -100,7 +100,7 @@ $db  = TehilimClient::fromPdo($pdo);
 ## Single-row CRUD
 
 ```php
-$alice = $db->user->create(['data' => [
+$alice = $db->user->insert(['data' => [
     'email' => 'alice@example.com',
     'name'  => 'Alice',
 ]]);
@@ -194,7 +194,7 @@ $db->member->findUnique(['where' => ['tenantId' => 1, 'email' => 'a@x']]);
 ## Bulk and upsert
 
 ```php
-$db->user->createMany([
+$db->user->insertMany([
     'data' => [
         ['email' => 'a@x'],
         ['email' => 'b@x'],
@@ -212,7 +212,7 @@ $db->user->deleteMany(['where' => ['archived' => true]]);
 
 $db->user->upsert([
     'where'  => ['email' => 'a@x'],
-    'create' => ['email' => 'a@x', 'name' => 'A'],
+    'insert' => ['email' => 'a@x', 'name' => 'A'],
     'update' => ['name'  => 'A'],
 ]);  // returns the resulting row
 ```
@@ -220,8 +220,8 @@ $db->user->upsert([
 ## Request-scoped cache
 
 Opt-in memoization for read calls (`findUnique` / `findFirst` / `findMany`
-/ `count`). Any write (`create` / `update` / `delete` / `upsert` /
-`createMany` / `updateMany` / `deleteMany`) **flushes the entire cache
+/ `count`). Any write (`insert` / `update` / `delete` / `upsert` /
+`insertMany` / `updateMany` / `deleteMany`) **flushes the entire cache
 before executing**, so a read-write-read pattern inside the same request
 sees the update.
 
@@ -258,29 +258,29 @@ block doesn't kill the outer transaction.
 use Polidog\Tehilim\Client\Rollback;
 
 $alice = $db->transaction(function ($tx) {
-    $u = $tx->user->create(['data' => ['email' => 'a@x']]);
-    $tx->post->create(['data' => ['title' => 'Hello', 'authorId' => $u['id']]]);
+    $u = $tx->user->insert(['data' => ['email' => 'a@x']]);
+    $tx->post->insert(['data' => ['title' => 'Hello', 'authorId' => $u['id']]]);
     return $u;
 });
 
 // Throw Rollback to abort silently; the payload is returned to the caller.
 $result = $db->transaction(function ($tx) {
-    $tx->user->create(['data' => ['email' => 'temp@x']]);
+    $tx->user->insert(['data' => ['email' => 'temp@x']]);
     throw new Rollback('discarded');
 });  // $result === 'discarded'; nothing persisted
 
 // Nested: inner failure does NOT abort the outer
 $db->transaction(function ($tx) {
-    $tx->user->create(['data' => ['email' => 'outer@x']]);
+    $tx->user->insert(['data' => ['email' => 'outer@x']]);
     try {
         $tx->transaction(function ($t2) {
-            $t2->user->create(['data' => ['email' => 'inner@x']]);
+            $t2->user->insert(['data' => ['email' => 'inner@x']]);
             throw new \RuntimeException('inner fail');
         });
     } catch (\RuntimeException) {
         // inner SAVEPOINT rolled back; outer keeps going
     }
-    $tx->user->create(['data' => ['email' => 'after@x']]);
+    $tx->user->insert(['data' => ['email' => 'after@x']]);
 });
 ```
 
@@ -295,7 +295,7 @@ v0.1 — usable for prototyping and small apps. Implemented:
 - where operators + AND/OR/NOT
 - `include` (hasMany / belongsTo / hasOne) + `select`
 - `@@id` / `@@unique` composite keys
-- `createMany` / `updateMany` / `deleteMany` / `upsert`
+- `insertMany` / `updateMany` / `deleteMany` / `upsert`
 - `transaction()` with nested SAVEPOINTs and `Rollback`
 - Opt-in request-scoped cache (auto-flush on writes)
 - File-based migration history (`migrate dev` / `deploy` / `status` / `reset`)

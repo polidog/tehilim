@@ -10,7 +10,7 @@ use Polidog\Tehilim\Client\Relation;
 /**
  * @phpstan-import-type PostRow from \Example\Blog\Generated\Model\PostClient
  * @phpstan-type UserRow array{id: int, email: string, name: string|null, createdAt: \DateTimeImmutable, posts?: list<PostRow>}
- * @phpstan-type UserCreateInput array{id?: int, email: string, name?: string|null, createdAt?: \DateTimeImmutable}
+ * @phpstan-type UserInsertInput array{id?: int, email: string, name?: string|null, createdAt?: \DateTimeImmutable}
  * @phpstan-type UserUpdateInput array{id?: int, email?: string, name?: string|null, createdAt?: \DateTimeImmutable}
  * @phpstan-type UserWhereUnique array{id?: int, email?: string}
  * @phpstan-type UserWhereInput array<string,mixed>
@@ -79,12 +79,12 @@ final class UserClient extends BaseModelClient
     }
 
     /**
-     * @param array{data: UserCreateInput} $args
+     * @param array{data: UserInsertInput} $args
      * @return UserRow
      */
-    public function create(array $args): array
+    public function insert(array $args): array
     {
-        return $this->doCreate($args);
+        return $this->doInsert($args);
     }
 
     /**
@@ -114,7 +114,7 @@ final class UserClient extends BaseModelClient
     }
 
     /**
-     * @param array{where: UserWhereUnique, update: UserUpdateInput, create: UserCreateInput} $args
+     * @param array{where: UserWhereUnique, update: UserUpdateInput, insert: UserInsertInput} $args
      * @return UserRow
      */
     public function upsert(array $args): array
@@ -123,12 +123,12 @@ final class UserClient extends BaseModelClient
     }
 
     /**
-     * @param array{data: list<UserCreateInput>, skipDuplicates?: bool} $args
+     * @param array{data: list<UserInsertInput>, skipDuplicates?: bool} $args
      * @return array{count: int}
      */
-    public function createMany(array $args): array
+    public function insertMany(array $args): array
     {
-        return $this->doCreateMany($args);
+        return $this->doInsertMany($args);
     }
 
     /**

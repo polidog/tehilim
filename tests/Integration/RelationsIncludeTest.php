@@ -67,12 +67,12 @@ TXT);
         /** @var \Polidog\Tehilim\Client\BaseClient $db */
         $db = new $clientClass($driver);
 
-        $alice = $db->user->create(['data' => ['email' => 'a@x']]);
-        $bob   = $db->user->create(['data' => ['email' => 'b@x']]);
+        $alice = $db->user->insert(['data' => ['email' => 'a@x']]);
+        $bob   = $db->user->insert(['data' => ['email' => 'b@x']]);
 
-        $db->post->create(['data' => ['title' => 'A1', 'authorId' => $alice['id']]]);
-        $db->post->create(['data' => ['title' => 'A2', 'authorId' => $alice['id']]]);
-        $db->post->create(['data' => ['title' => 'B1', 'authorId' => $bob['id']]]);
+        $db->post->insert(['data' => ['title' => 'A1', 'authorId' => $alice['id']]]);
+        $db->post->insert(['data' => ['title' => 'A2', 'authorId' => $alice['id']]]);
+        $db->post->insert(['data' => ['title' => 'B1', 'authorId' => $bob['id']]]);
 
         // hasMany include
         $users = $db->user->findMany([
@@ -136,8 +136,8 @@ TXT);
         /** @var \Polidog\Tehilim\Client\BaseClient $db */
         $db = new $clientClass($driver);
 
-        $db->user->create(['data' => ['email' => 'a@x', 'name' => 'A', 'age' => 30]]);
-        $db->user->create(['data' => ['email' => 'b@x', 'name' => 'B', 'age' => 40]]);
+        $db->user->insert(['data' => ['email' => 'a@x', 'name' => 'A', 'age' => 30]]);
+        $db->user->insert(['data' => ['email' => 'b@x', 'name' => 'B', 'age' => 40]]);
 
         $rows = $db->user->findMany([
             'select'  => ['email' => true],

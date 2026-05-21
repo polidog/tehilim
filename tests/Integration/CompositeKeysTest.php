@@ -53,14 +53,14 @@ TXT);
         /** @var \Polidog\Tehilim\Client\BaseClient $db */
         $db = new $clientClass($driver);
 
-        $db->enrollment->create(['data' => ['userId' => 1, 'courseId' => 100, 'grade' => 'A']]);
-        $db->enrollment->create(['data' => ['userId' => 1, 'courseId' => 101, 'grade' => 'B']]);
-        $db->enrollment->create(['data' => ['userId' => 2, 'courseId' => 100, 'grade' => 'C']]);
+        $db->enrollment->insert(['data' => ['userId' => 1, 'courseId' => 100, 'grade' => 'A']]);
+        $db->enrollment->insert(['data' => ['userId' => 1, 'courseId' => 101, 'grade' => 'B']]);
+        $db->enrollment->insert(['data' => ['userId' => 2, 'courseId' => 100, 'grade' => 'C']]);
 
         // PK collision rejected
         $threw = false;
         try {
-            $db->enrollment->create(['data' => ['userId' => 1, 'courseId' => 100, 'grade' => 'D']]);
+            $db->enrollment->insert(['data' => ['userId' => 1, 'courseId' => 100, 'grade' => 'D']]);
         } catch (\Throwable) {
             $threw = true;
         }
@@ -108,12 +108,12 @@ TXT);
         /** @var \Polidog\Tehilim\Client\BaseClient $db */
         $db = new $clientClass($driver);
 
-        $db->member->create(['data' => ['tenantId' => 1, 'email' => 'a@x']]);
-        $db->member->create(['data' => ['tenantId' => 2, 'email' => 'a@x']]); // ok: different tenant
+        $db->member->insert(['data' => ['tenantId' => 1, 'email' => 'a@x']]);
+        $db->member->insert(['data' => ['tenantId' => 2, 'email' => 'a@x']]); // ok: different tenant
 
         $threw = false;
         try {
-            $db->member->create(['data' => ['tenantId' => 1, 'email' => 'a@x']]);
+            $db->member->insert(['data' => ['tenantId' => 1, 'email' => 'a@x']]);
         } catch (\Throwable) {
             $threw = true;
         }

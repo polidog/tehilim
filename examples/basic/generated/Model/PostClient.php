@@ -10,7 +10,7 @@ use Polidog\Tehilim\Client\Relation;
 /**
  * @phpstan-import-type UserRow from \Example\Blog\Generated\Model\UserClient
  * @phpstan-type PostRow array{id: int, title: string, body: string|null, published: bool, authorId: int, createdAt: \DateTimeImmutable, author?: UserRow|null}
- * @phpstan-type PostCreateInput array{id?: int, title: string, body?: string|null, published?: bool, authorId: int, createdAt?: \DateTimeImmutable}
+ * @phpstan-type PostInsertInput array{id?: int, title: string, body?: string|null, published?: bool, authorId: int, createdAt?: \DateTimeImmutable}
  * @phpstan-type PostUpdateInput array{id?: int, title?: string, body?: string|null, published?: bool, authorId?: int, createdAt?: \DateTimeImmutable}
  * @phpstan-type PostWhereUnique array{id?: int}
  * @phpstan-type PostWhereInput array<string,mixed>
@@ -79,12 +79,12 @@ final class PostClient extends BaseModelClient
     }
 
     /**
-     * @param array{data: PostCreateInput} $args
+     * @param array{data: PostInsertInput} $args
      * @return PostRow
      */
-    public function create(array $args): array
+    public function insert(array $args): array
     {
-        return $this->doCreate($args);
+        return $this->doInsert($args);
     }
 
     /**
@@ -114,7 +114,7 @@ final class PostClient extends BaseModelClient
     }
 
     /**
-     * @param array{where: PostWhereUnique, update: PostUpdateInput, create: PostCreateInput} $args
+     * @param array{where: PostWhereUnique, update: PostUpdateInput, insert: PostInsertInput} $args
      * @return PostRow
      */
     public function upsert(array $args): array
@@ -123,12 +123,12 @@ final class PostClient extends BaseModelClient
     }
 
     /**
-     * @param array{data: list<PostCreateInput>, skipDuplicates?: bool} $args
+     * @param array{data: list<PostInsertInput>, skipDuplicates?: bool} $args
      * @return array{count: int}
      */
-    public function createMany(array $args): array
+    public function insertMany(array $args): array
     {
-        return $this->doCreateMany($args);
+        return $this->doInsertMany($args);
     }
 
     /**

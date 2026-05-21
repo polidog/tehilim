@@ -30,7 +30,7 @@ final class BulkAndUpsertTest extends TestCase
     {
         $db = $this->makeClient('Bulk');
 
-        $res = $db->user->createMany(['data' => [
+        $res = $db->user->insertMany(['data' => [
             ['email' => 'a@x', 'name' => 'A', 'active' => true],
             ['email' => 'b@x', 'name' => 'B', 'active' => true],
             ['email' => 'c@x', 'name' => 'C', 'active' => false],
@@ -55,9 +55,9 @@ final class BulkAndUpsertTest extends TestCase
     {
         $db = $this->makeClient('Skip');
 
-        $db->user->create(['data' => ['email' => 'a@x', 'name' => 'A']]);
+        $db->user->insert(['data' => ['email' => 'a@x', 'name' => 'A']]);
 
-        $res = $db->user->createMany([
+        $res = $db->user->insertMany([
             'data' => [
                 ['email' => 'a@x', 'name' => 'A again'], // dup
                 ['email' => 'b@x', 'name' => 'B'],
@@ -74,14 +74,14 @@ final class BulkAndUpsertTest extends TestCase
 
         $first = $db->user->upsert([
             'where'  => ['email' => 'a@x'],
-            'create' => ['email' => 'a@x', 'name' => 'A1'],
+            'insert' => ['email' => 'a@x', 'name' => 'A1'],
             'update' => ['name' => 'A2'],
         ]);
         self::assertSame('A1', $first['name']);
 
         $second = $db->user->upsert([
             'where'  => ['email' => 'a@x'],
-            'create' => ['email' => 'a@x', 'name' => 'should not happen'],
+            'insert' => ['email' => 'a@x', 'name' => 'should not happen'],
             'update' => ['name' => 'A2'],
         ]);
         self::assertSame('A2', $second['name']);

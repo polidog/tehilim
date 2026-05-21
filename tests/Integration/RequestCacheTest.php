@@ -31,7 +31,7 @@ final class RequestCacheTest extends TestCase
         [$db, $pdo] = $this->makeClient('CacheHit');
         $db->enableCache();
 
-        $db->user->create(['data' => ['email' => 'a@x']]);
+        $db->user->insert(['data' => ['email' => 'a@x']]);
 
         $first = $db->user->findUnique(['where' => ['email' => 'a@x']]);
         self::assertNotNull($first);
@@ -53,7 +53,7 @@ final class RequestCacheTest extends TestCase
         [$db] = $this->makeClient('CacheWrite');
         $db->enableCache();
 
-        $db->user->create(['data' => ['email' => 'a@x']]);
+        $db->user->insert(['data' => ['email' => 'a@x']]);
         $beforeCount = $db->user->count();
         self::assertSame(1, $beforeCount);
 
@@ -64,7 +64,7 @@ final class RequestCacheTest extends TestCase
         self::assertSame(1, $db->cache()->hits());
 
         // Write through the client should flush everything
-        $db->user->create(['data' => ['email' => 'b@x']]);
+        $db->user->insert(['data' => ['email' => 'b@x']]);
 
         self::assertSame(2, $db->user->count(), 'count must reflect new row');
     }
@@ -74,7 +74,7 @@ final class RequestCacheTest extends TestCase
         [$db] = $this->makeClient('CacheArgs');
         $db->enableCache();
 
-        $db->user->createMany(['data' => [
+        $db->user->insertMany(['data' => [
             ['email' => 'a@x', 'name' => 'A'],
             ['email' => 'b@x', 'name' => 'B'],
         ]]);
@@ -96,7 +96,7 @@ final class RequestCacheTest extends TestCase
         [$db, $pdo] = $this->makeClient('CacheManualFlush');
         $db->enableCache();
 
-        $db->user->create(['data' => ['email' => 'a@x']]);
+        $db->user->insert(['data' => ['email' => 'a@x']]);
         $row = $db->user->findUnique(['where' => ['email' => 'a@x']]);
         self::assertNotNull($row);
 
@@ -112,7 +112,7 @@ final class RequestCacheTest extends TestCase
     {
         [$db, $pdo] = $this->makeClient('CacheOff');
 
-        $db->user->create(['data' => ['email' => 'a@x']]);
+        $db->user->insert(['data' => ['email' => 'a@x']]);
         $row = $db->user->findUnique(['where' => ['email' => 'a@x']]);
         self::assertNotNull($row);
 

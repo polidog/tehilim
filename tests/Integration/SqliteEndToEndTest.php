@@ -65,11 +65,11 @@ TXT;
         /** @var \Polidog\Tehilim\Client\BaseClient $db */
         $db = new $clientClass($driver);
 
-        $alice = $db->user->create(['data' => ['email' => 'a@b.com', 'name' => 'Alice', 'age' => 30]]);
+        $alice = $db->user->insert(['data' => ['email' => 'a@b.com', 'name' => 'Alice', 'age' => 30]]);
         self::assertIsInt($alice['id']);
         self::assertSame('a@b.com', $alice['email']);
 
-        $bob = $db->user->create(['data' => ['email' => 'b@b.com', 'name' => 'Bob']]);
+        $bob = $db->user->insert(['data' => ['email' => 'b@b.com', 'name' => 'Bob']]);
         self::assertIsInt($bob['id']);
 
         $found = $db->user->findUnique(['where' => ['email' => 'a@b.com']]);
