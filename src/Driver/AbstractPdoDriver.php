@@ -157,6 +157,17 @@ abstract class AbstractPdoDriver implements Driver
         return 'DROP INDEX ' . $this->quoteIdent($indexName);
     }
 
+    public function multiInsertSql(string $table, array $columns, int $rowCount, bool $skipDuplicates): string
+    {
+        if ($columns === [] || $rowCount < 1) {
+            throw new \InvalidArgumentException('multiInsertSql: columns and rowCount must be non-empty');
+        }
+        $cols = implode(', ', array_map($this->quoteIdent(...), $columns));
+        $tuple = '(' . implode(', ', array_fill(0, count($columns), '?')) . ')';
+        $values = implode(', ', array_fill(0, $rowCount, $tuple));
+        return sprintf('INSERT INTO %s (%s) VALUES %s', $this->quoteIdent($table), $cols, $values);
+    }
+
     abstract protected function columnSql(ColumnDef $col, bool $isPrimary): string;
 
     protected function primaryKeyInline(): bool

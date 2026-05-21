@@ -38,6 +38,14 @@ interface Driver
      */
     public function createUniqueIndexSql(string $table, array $columns, string $indexName): string;
 
+    /**
+     * Returns INSERT ... VALUES (?, ?), (?, ?), ... statement for $rowCount
+     * rows of $columns columns, optionally skipping on PK/unique conflicts.
+     *
+     * @param list<string> $columns
+     */
+    public function multiInsertSql(string $table, array $columns, int $rowCount, bool $skipDuplicates): string;
+
     public function dropIndexSql(string $indexName, string $table): string;
 
     /**

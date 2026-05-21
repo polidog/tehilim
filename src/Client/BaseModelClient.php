@@ -192,6 +192,108 @@ abstract class BaseModelClient
     }
 
     /**
+     * @param array{where: array<string,mixed>, update: array<string,mixed>, create: array<string,mixed>} $args
+     * @return array<string,mixed>
+     */
+    protected function doUpsert(array $args): array
+    {
+        $existing = $this->doFindFirst(['where' => $args['where']]);
+        if ($existing !== null) {
+            return $this->doUpdate(['where' => $args['where'], 'data' => $args['update']]);
+        }
+        return $this->doCreate(['data' => $args['create']]);
+    }
+
+    /**
+     * @param array{data: list<array<string,mixed>>, skipDuplicates?: bool} $args
+     * @return array{count: int}
+     */
+    protected function doCreateMany(array $args): array
+    {
+        $rows = $args['data'];
+        if ($rows === []) {
+            return ['count' => 0];
+        }
+        $skipDup = (bool) ($args['skipDuplicates'] ?? false);
+        $types = $this->columnTypes();
+
+        $columnSet = [];
+        foreach ($rows as $r) {
+            foreach (array_keys($r) as $k) {
+                $columnSet[$k] = true;
+            }
+        }
+        $columns = array_keys($columnSet);
+
+        $params = [];
+        foreach ($rows as $r) {
+            foreach ($columns as $c) {
+                $v = $r[$c] ?? null;
+                $type = $types[$c] ?? 'string';
+                $params[] = $v === null ? null : $this->driver->bind($type, $v);
+            }
+        }
+
+        $sql = $this->driver->multiInsertSql($this->table(), $columns, count($rows), $skipDup);
+        $stmt = $this->driver->pdo()->prepare($sql);
+        $stmt->execute($params);
+
+        return ['count' => $stmt->rowCount()];
+    }
+
+    /**
+     * @param array{where?: array<string,mixed>, data: array<string,mixed>} $args
+     * @return array{count: int}
+     */
+    protected function doUpdateMany(array $args): array
+    {
+        $where = $args['where'] ?? [];
+        $data = $args['data'];
+        if ($data === []) {
+            return ['count' => 0];
+        }
+        $types = $this->columnTypes();
+
+        $setParts = [];
+        $params = [];
+        foreach ($data as $col => $val) {
+            $type = $types[$col] ?? 'string';
+            $setParts[] = $this->driver->quoteIdent($col) . ' = ?';
+            $params[] = $this->driver->bind($type, $val);
+        }
+
+        [$whereSql, $whereParams] = $this->compileWhere($where);
+        $params = [...$params, ...$whereParams];
+
+        $sql = sprintf(
+            'UPDATE %s SET %s WHERE %s',
+            $this->driver->quoteIdent($this->table()),
+            implode(', ', $setParts),
+            $whereSql,
+        );
+        $stmt = $this->driver->pdo()->prepare($sql);
+        $stmt->execute($params);
+        return ['count' => $stmt->rowCount()];
+    }
+
+    /**
+     * @param array{where?: array<string,mixed>} $args
+     * @return array{count: int}
+     */
+    protected function doDeleteMany(array $args = []): array
+    {
+        [$whereSql, $params] = $this->compileWhere($args['where'] ?? []);
+        $sql = sprintf(
+            'DELETE FROM %s WHERE %s',
+            $this->driver->quoteIdent($this->table()),
+            $whereSql,
+        );
+        $stmt = $this->driver->pdo()->prepare($sql);
+        $stmt->execute($params);
+        return ['count' => $stmt->rowCount()];
+    }
+
+    /**
      * @param array{where?: array<string,mixed>} $args
      */
     protected function doCount(array $args = []): int

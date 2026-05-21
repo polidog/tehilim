@@ -219,6 +219,42 @@ final class {$name}Client extends BaseModelClient
     {
         return \$this->doCount(\$args);
     }
+
+    /**
+     * @param array{where: {$name}WhereUnique, update: {$name}UpdateInput, create: {$name}CreateInput} \$args
+     * @return {$name}Row
+     */
+    public function upsert(array \$args): array
+    {
+        return \$this->doUpsert(\$args);
+    }
+
+    /**
+     * @param array{data: list<{$name}CreateInput>, skipDuplicates?: bool} \$args
+     * @return array{count: int}
+     */
+    public function createMany(array \$args): array
+    {
+        return \$this->doCreateMany(\$args);
+    }
+
+    /**
+     * @param array{where?: {$name}WhereInput, data: {$name}UpdateInput} \$args
+     * @return array{count: int}
+     */
+    public function updateMany(array \$args): array
+    {
+        return \$this->doUpdateMany(\$args);
+    }
+
+    /**
+     * @param array{where?: {$name}WhereInput} \$args
+     * @return array{count: int}
+     */
+    public function deleteMany(array \$args = []): array
+    {
+        return \$this->doDeleteMany(\$args);
+    }
 }
 
 PHP;

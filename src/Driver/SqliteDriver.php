@@ -18,6 +18,15 @@ final class SqliteDriver extends AbstractPdoDriver
         return true;
     }
 
+    public function multiInsertSql(string $table, array $columns, int $rowCount, bool $skipDuplicates): string
+    {
+        $sql = parent::multiInsertSql($table, $columns, $rowCount, $skipDuplicates);
+        if ($skipDuplicates) {
+            $sql = preg_replace('/^INSERT /', 'INSERT OR IGNORE ', $sql, 1) ?? $sql;
+        }
+        return $sql;
+    }
+
     protected function columnSql(ColumnDef $col, bool $isPrimary): string
     {
         $type = $this->sqlType($col);

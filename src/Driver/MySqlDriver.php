@@ -22,6 +22,15 @@ final class MySqlDriver extends AbstractPdoDriver
         );
     }
 
+    public function multiInsertSql(string $table, array $columns, int $rowCount, bool $skipDuplicates): string
+    {
+        $sql = parent::multiInsertSql($table, $columns, $rowCount, $skipDuplicates);
+        if ($skipDuplicates) {
+            $sql = preg_replace('/^INSERT /', 'INSERT IGNORE ', $sql, 1) ?? $sql;
+        }
+        return $sql;
+    }
+
     protected function columnSql(ColumnDef $col, bool $isPrimary): string
     {
         $parts = [$this->quoteIdent($col->name), $this->sqlType($col)];

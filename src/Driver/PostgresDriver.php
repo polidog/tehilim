@@ -13,6 +13,15 @@ final class PostgresDriver extends AbstractPdoDriver
         return '"' . str_replace('"', '""', $name) . '"';
     }
 
+    public function multiInsertSql(string $table, array $columns, int $rowCount, bool $skipDuplicates): string
+    {
+        $sql = parent::multiInsertSql($table, $columns, $rowCount, $skipDuplicates);
+        if ($skipDuplicates) {
+            $sql .= ' ON CONFLICT DO NOTHING';
+        }
+        return $sql;
+    }
+
     public function insertReturning(string $table, ?string $primaryKey, array $data, array $allColumns): array
     {
         $columns = array_keys($data);
