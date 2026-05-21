@@ -19,6 +19,7 @@ interface Driver
      *
      * @param array<string,mixed> $data       column => value
      * @param list<string>        $allColumns full column list to select back
+     *
      * @return array<string,mixed>
      */
     public function insertReturning(string $table, ?string $primaryKey, array $data, array $allColumns): array;

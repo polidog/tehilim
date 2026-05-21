@@ -28,9 +28,9 @@ namespace Polidog\Tehilim\Client;
  */
 final class Relation
 {
-    public const BELONGS_TO   = 'belongsTo';
-    public const HAS_ONE      = 'hasOne';
-    public const HAS_MANY     = 'hasMany';
+    public const BELONGS_TO = 'belongsTo';
+    public const HAS_ONE = 'hasOne';
+    public const HAS_MANY = 'hasMany';
     public const MANY_TO_MANY = 'manyToMany';
 
     /**

@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Polidog\Tehilim\Migration;
 
+use DateTimeImmutable;
+use RuntimeException;
+
 /**
  * Filesystem layout for migrations:
  *
@@ -21,7 +24,7 @@ final class MigrationStore
     public function ensureDir(): void
     {
         if (!is_dir($this->baseDir) && !mkdir($this->baseDir, 0755, true) && !is_dir($this->baseDir)) {
-            throw new \RuntimeException("Cannot create migrations dir: {$this->baseDir}");
+            throw new RuntimeException("Cannot create migrations dir: {$this->baseDir}");
         }
     }
 
@@ -37,6 +40,7 @@ final class MigrationStore
             return '';
         }
         $src = file_get_contents($p);
+
         return $src === false ? '' : $src;
     }
 
@@ -62,6 +66,7 @@ final class MigrationStore
             }
         }
         sort($out);
+
         return $out;
     }
 
@@ -70,8 +75,9 @@ final class MigrationStore
         $p = $this->baseDir . '/' . $id . '/migration.sql';
         $src = file_get_contents($p);
         if ($src === false) {
-            throw new \RuntimeException("Cannot read migration: {$p}");
+            throw new RuntimeException("Cannot read migration: {$p}");
         }
+
         return $src;
     }
 
@@ -81,21 +87,23 @@ final class MigrationStore
         $this->ensureDir();
         $dir = $this->baseDir . '/' . $id;
         if (!is_dir($dir) && !mkdir($dir, 0755, true) && !is_dir($dir)) {
-            throw new \RuntimeException("Cannot create migration dir: {$dir}");
+            throw new RuntimeException("Cannot create migration dir: {$dir}");
         }
         $path = $dir . '/migration.sql';
         file_put_contents($path, implode("\n", $sqlStatements) . "\n");
+
         return $path;
     }
 
-    public static function newId(string $slug, ?\DateTimeImmutable $now = null): string
+    public static function newId(string $slug, ?DateTimeImmutable $now = null): string
     {
-        $now ??= new \DateTimeImmutable('now');
+        $now ??= new DateTimeImmutable('now');
         $clean = preg_replace('/[^a-z0-9_]+/i', '_', $slug) ?? 'migration';
         $clean = trim((string) $clean, '_');
         if ($clean === '') {
             $clean = 'migration';
         }
+
         return $now->format('YmdHisv') . '_' . $clean;
     }
 }

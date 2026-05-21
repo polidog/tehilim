@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Polidog\Tehilim\Driver;
 
+use PDO;
 use Polidog\Tehilim\Migration\ColumnDef;
+use RuntimeException;
 
 final class PostgresDriver extends AbstractPdoDriver
 {
@@ -16,10 +18,11 @@ final class PostgresDriver extends AbstractPdoDriver
     public function listTables(): array
     {
         $stmt = $this->pdoInstance->prepare(
-            "SELECT tablename FROM pg_tables WHERE schemaname = ANY (current_schemas(false))"
+            'SELECT tablename FROM pg_tables WHERE schemaname = ANY (current_schemas(false))'
         );
         $stmt->execute();
-        $rows = $stmt->fetchAll(\PDO::FETCH_COLUMN);
+        $rows = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
         return array_map(strval(...), $rows);
     }
 
@@ -29,6 +32,7 @@ final class PostgresDriver extends AbstractPdoDriver
         if ($skipDuplicates) {
             $sql .= ' ON CONFLICT DO NOTHING';
         }
+
         return $sql;
     }
 
@@ -54,8 +58,9 @@ final class PostgresDriver extends AbstractPdoDriver
         $stmt->execute(array_values($data));
         $row = $stmt->fetch();
         if (!is_array($row)) {
-            throw new \RuntimeException("INSERT ... RETURNING produced no row for {$table}");
+            throw new RuntimeException("INSERT ... RETURNING produced no row for {$table}");
         }
+
         /** @var array<string,mixed> $row */
         return $row;
     }
@@ -82,6 +87,7 @@ final class PostgresDriver extends AbstractPdoDriver
         if ($col->autoIncrement && $col->phpType === 'BigInt') {
             return 'BIGSERIAL';
         }
+
         return match ($col->phpType) {
             'int' => 'INTEGER',
             'BigInt' => 'BIGINT',
@@ -106,6 +112,7 @@ final class PostgresDriver extends AbstractPdoDriver
         if (is_int($v) || is_float($v)) {
             return (string) $v;
         }
+
         return "'" . str_replace("'", "''", (string) $v) . "'";
     }
 }

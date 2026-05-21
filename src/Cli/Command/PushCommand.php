@@ -8,6 +8,7 @@ use Polidog\Tehilim\Config;
 use Polidog\Tehilim\Driver\Drivers;
 use Polidog\Tehilim\Migration\SchemaSync;
 use Polidog\Tehilim\Schema\Parser;
+use RuntimeException;
 
 final class PushCommand
 {
@@ -19,10 +20,10 @@ final class PushCommand
 
         $ds = $schema->datasources[0] ?? null;
         if ($ds === null) {
-            throw new \RuntimeException("schema has no 'datasource' block");
+            throw new RuntimeException("schema has no 'datasource' block");
         }
 
-        $url = $ds->url() ?? throw new \RuntimeException("datasource '{$ds->name}' has no 'url'");
+        $url = $ds->url() ?? throw new RuntimeException("datasource '{$ds->name}' has no 'url'");
 
         $resolvedUrl = $this->resolveUrl($url, $opts['schema']);
         $driver = Drivers::forPdo(Config::pdo($resolvedUrl));
@@ -30,6 +31,7 @@ final class PushCommand
         (new SchemaSync($driver, $schema))->push(drop: true);
 
         echo "Pushed schema to {$url}\n";
+
         return 0;
     }
 
@@ -43,6 +45,7 @@ final class PushCommand
             return $url;
         }
         $base = dirname(realpath($schemaPath) ?: $schemaPath);
+
         return 'sqlite:' . $base . '/' . ltrim($path, './');
     }
 }

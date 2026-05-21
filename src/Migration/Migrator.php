@@ -4,10 +4,13 @@ declare(strict_types=1);
 
 namespace Polidog\Tehilim\Migration;
 
+use DateTimeImmutable;
 use PDO;
 use Polidog\Tehilim\Driver\Driver;
 use Polidog\Tehilim\Schema\Ast\Schema as SchemaAst;
 use Polidog\Tehilim\Schema\Parser;
+use RuntimeException;
+use Throwable;
 
 final class Migrator
 {
@@ -25,7 +28,7 @@ final class Migrator
      *
      * @return array{id:string, path:string, statements:int, skipped:bool}
      */
-    public function dev(string $slug, ?\DateTimeImmutable $now = null): array
+    public function dev(string $slug, ?DateTimeImmutable $now = null): array
     {
         $newSchemaSrc = $this->readSchemaSource();
         $newSchema = Parser::parseString($newSchemaSrc);
@@ -73,6 +76,7 @@ final class Migrator
             $this->record($id, $sql);
             $done[] = $id;
         }
+
         return $done;
     }
 
@@ -87,6 +91,7 @@ final class Migrator
         foreach ($this->store->listMigrations() as $id) {
             $out[] = ['id' => $id, 'applied' => isset($applied[$id])];
         }
+
         return $out;
     }
 
@@ -111,8 +116,9 @@ final class Migrator
     {
         $src = @file_get_contents($this->schemaPath);
         if ($src === false) {
-            throw new \RuntimeException("Cannot read schema: {$this->schemaPath}");
+            throw new RuntimeException("Cannot read schema: {$this->schemaPath}");
         }
+
         return $src;
     }
 
@@ -129,6 +135,7 @@ final class Migrator
         $stmt = $pdo->prepare($sql);
         $stmt->execute();
         $rows = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
         return array_map(strval(...), $rows);
     }
 
@@ -137,9 +144,9 @@ final class Migrator
         $table = new TableDef(
             name: self::TRACKING_TABLE,
             columns: [
-                new ColumnDef(name: 'id',         phpType: 'string',  nullable: false),
-                new ColumnDef(name: 'applied_at', phpType: 'string',  nullable: false),
-                new ColumnDef(name: 'checksum',   phpType: 'string',  nullable: false),
+                new ColumnDef(name: 'id', phpType: 'string', nullable: false),
+                new ColumnDef(name: 'applied_at', phpType: 'string', nullable: false),
+                new ColumnDef(name: 'checksum', phpType: 'string', nullable: false),
             ],
             primaryKey: 'id',
         );
@@ -151,6 +158,7 @@ final class Migrator
     {
         $pdo = $this->driver->pdo();
         $pdo->beginTransaction();
+
         try {
             foreach ($statements as $sql) {
                 $trim = trim($sql);
@@ -160,8 +168,9 @@ final class Migrator
                 $this->run($sql);
             }
             $pdo->commit();
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             $pdo->rollBack();
+
             throw $e;
         }
     }
@@ -179,7 +188,7 @@ final class Migrator
         $stmt = $pdo->prepare($sqlInsert);
         $stmt->execute([
             $id,
-            (new \DateTimeImmutable('now'))->format('Y-m-d H:i:s'),
+            (new DateTimeImmutable('now'))->format('Y-m-d H:i:s'),
             hash('sha256', $sql),
         ]);
     }
@@ -204,18 +213,20 @@ final class Migrator
         $stringChar = '';
         $len = strlen($sql);
 
-        for ($i = 0; $i < $len; $i++) {
+        for ($i = 0; $i < $len; ++$i) {
             $c = $sql[$i];
             $buf .= $c;
             if ($inString) {
                 if ($c === $stringChar) {
                     $inString = false;
                 }
+
                 continue;
             }
             if ($c === "'" || $c === '"') {
                 $inString = true;
                 $stringChar = $c;
+
                 continue;
             }
             if ($c === ';') {
@@ -226,6 +237,7 @@ final class Migrator
         if (trim($buf) !== '') {
             $statements[] = $buf;
         }
+
         return $statements;
     }
 }

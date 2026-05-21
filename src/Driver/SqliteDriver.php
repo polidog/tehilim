@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Polidog\Tehilim\Driver;
 
+use PDO;
 use Polidog\Tehilim\Migration\ColumnDef;
 
 final class SqliteDriver extends AbstractPdoDriver
@@ -13,18 +14,14 @@ final class SqliteDriver extends AbstractPdoDriver
         return '"' . str_replace('"', '""', $name) . '"';
     }
 
-    protected function primaryKeyInline(): bool
-    {
-        return true;
-    }
-
     public function listTables(): array
     {
         $stmt = $this->pdoInstance->prepare(
             "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"
         );
         $stmt->execute();
-        $rows = $stmt->fetchAll(\PDO::FETCH_COLUMN);
+        $rows = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
         return array_map(strval(...), $rows);
     }
 
@@ -34,7 +31,13 @@ final class SqliteDriver extends AbstractPdoDriver
         if ($skipDuplicates) {
             $sql = preg_replace('/^INSERT /', 'INSERT OR IGNORE ', $sql, 1) ?? $sql;
         }
+
         return $sql;
+    }
+
+    protected function primaryKeyInline(): bool
+    {
+        return true;
     }
 
     protected function columnSql(ColumnDef $col, bool $isPrimary): string
@@ -83,6 +86,7 @@ final class SqliteDriver extends AbstractPdoDriver
         if (is_int($v) || is_float($v)) {
             return (string) $v;
         }
+
         return "'" . str_replace("'", "''", (string) $v) . "'";
     }
 }

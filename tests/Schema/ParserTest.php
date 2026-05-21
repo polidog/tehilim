@@ -27,7 +27,7 @@ TXT;
         self::assertCount(1, $schema->datasources);
         self::assertSame('sqlite', $schema->datasources[0]->provider());
         self::assertSame('sqlite::memory:', $schema->datasources[0]->url());
-        self::assertSame('Foo\\Bar', $schema->generators[0]->namespace());
+        self::assertSame('Foo\Bar', $schema->generators[0]->namespace());
     }
 
     public function testParsesModelWithAttributes(): void

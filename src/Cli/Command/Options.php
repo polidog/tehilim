@@ -11,6 +11,7 @@ final class Options
      * `--schema` is hoisted out separately for convenience.
      *
      * @param array<int,string> $args
+     *
      * @return array{schema:string, extra:array<string,string>}
      */
     public static function parse(array $args, string $defaultSchema = 'schema.tehilim'): array
@@ -18,7 +19,7 @@ final class Options
         $schema = $defaultSchema;
         $extra = [];
 
-        for ($i = 0, $n = count($args); $i < $n; $i++) {
+        for ($i = 0, $n = count($args); $i < $n; ++$i) {
             $a = $args[$i];
             if (!str_starts_with($a, '--')) {
                 continue;

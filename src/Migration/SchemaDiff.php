@@ -15,7 +15,7 @@ use Polidog\Tehilim\Schema\Ast\Schema;
 final class SchemaDiff
 {
     /**
-     * @return list<string> SQL statements (driver-specific).
+     * @return list<string> SQL statements (driver-specific)
      */
     public function diff(Schema $from, Schema $to, Driver $driver): array
     {
@@ -31,6 +31,7 @@ final class SchemaDiff
         foreach ($newTables as $name => $table) {
             if (!isset($oldTables[$name])) {
                 $out[] = $driver->createTableSql($table) . ';';
+
                 continue;
             }
             $out = array_merge($out, $this->diffTable($oldTables[$name], $table, $driver));
@@ -52,12 +53,13 @@ final class SchemaDiff
         foreach ($newCols as $name => $col) {
             if (!isset($oldCols[$name])) {
                 $out[] = $driver->addColumnSql($new->name, $col) . ';';
+
                 continue;
             }
             $changes = $this->columnDifferences($oldCols[$name], $col);
             if ($changes !== []) {
                 $out[] = sprintf(
-                    "-- MANUAL: column %s.%s changed (%s) — Tehilim v1 does not auto-alter; please edit this migration.",
+                    '-- MANUAL: column %s.%s changed (%s) — Tehilim v1 does not auto-alter; please edit this migration.',
                     $new->name,
                     $name,
                     implode(', ', $changes),
@@ -103,7 +105,7 @@ final class SchemaDiff
 
         if ($old->pkColumns() !== $new->pkColumns()) {
             $out[] = sprintf(
-                "-- MANUAL: primary key on %s changed (%s -> %s); Tehilim v1 does not auto-alter PKs.",
+                '-- MANUAL: primary key on %s changed (%s -> %s); Tehilim v1 does not auto-alter PKs.',
                 $new->name,
                 implode(',', $old->pkColumns()) ?: '<none>',
                 implode(',', $new->pkColumns()) ?: '<none>',
@@ -131,11 +133,13 @@ final class SchemaDiff
         if ($a->autoIncrement !== $b->autoIncrement) {
             $diff[] = 'autoIncrement changed';
         }
+
         return $diff;
     }
 
     /**
      * @param list<TableDef> $tables
+     *
      * @return array<string,TableDef>
      */
     private function byName(array $tables): array
@@ -144,6 +148,7 @@ final class SchemaDiff
         foreach ($tables as $t) {
             $out[$t->name] = $t;
         }
+
         return $out;
     }
 
@@ -156,6 +161,7 @@ final class SchemaDiff
         foreach ($table->columns as $col) {
             $out[$col->name] = $col;
         }
+
         return $out;
     }
 

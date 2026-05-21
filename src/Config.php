@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Polidog\Tehilim;
 
+use InvalidArgumentException;
 use PDO;
 
 /**
@@ -42,8 +43,10 @@ final class Config
             if ($driverName === 'mysql') {
                 $dsn .= ';charset=utf8mb4';
             }
+
             return new PDO($dsn, $user ?? $urlUser, $password ?? $urlPass);
         }
-        throw new \InvalidArgumentException("Cannot parse database URL: {$url}");
+
+        throw new InvalidArgumentException("Cannot parse database URL: {$url}");
     }
 }

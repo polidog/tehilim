@@ -99,12 +99,14 @@ final class FindSelectReturnTypeExtension implements DynamicMethodReturnTypeExte
         if ($narrowed === null) {
             return $defaultReturn;
         }
+
         return $this->wrap($narrowed, $wrap);
     }
 
     private function singleConstantArray(Type $type): ?ConstantArrayType
     {
         $arrays = $type->getConstantArrays();
+
         return count($arrays) === 1 ? $arrays[0] : null;
     }
 
@@ -130,6 +132,7 @@ final class FindSelectReturnTypeExtension implements DynamicMethodReturnTypeExte
                 if (count($strings) === 1) {
                     $picked[] = $strings[0]->getValue();
                 }
+
                 continue;
             }
             $strings = $keyType->getConstantStrings();
@@ -138,6 +141,7 @@ final class FindSelectReturnTypeExtension implements DynamicMethodReturnTypeExte
             }
             $picked[] = $strings[0]->getValue();
         }
+
         return $picked;
     }
 
@@ -153,11 +157,12 @@ final class FindSelectReturnTypeExtension implements DynamicMethodReturnTypeExte
             return null;
         }
         $pk = $native->getConstant('PK');
+
         return is_string($pk) ? $pk : null;
     }
 
     /**
-     * @return array{0: ConstantArrayType, 1: string}|null
+     * @return null|array{0: ConstantArrayType, 1: string}
      */
     private function unwrapRow(Type $defaultReturn): ?array
     {
@@ -167,6 +172,7 @@ final class FindSelectReturnTypeExtension implements DynamicMethodReturnTypeExte
             if ($row !== null) {
                 return [$row, 'list'];
             }
+
             return null;
         }
         $nonNull = TypeCombinator::removeNull($defaultReturn);
@@ -174,6 +180,7 @@ final class FindSelectReturnTypeExtension implements DynamicMethodReturnTypeExte
         if ($row !== null) {
             return [$row, $nonNull === $defaultReturn ? 'plain' : 'nullable'];
         }
+
         return null;
     }
 
@@ -214,6 +221,7 @@ final class FindSelectReturnTypeExtension implements DynamicMethodReturnTypeExte
         if ($newKeys === []) {
             return null;
         }
+
         return new ConstantArrayType($newKeys, $newValues);
     }
 

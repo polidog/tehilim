@@ -1,6 +1,8 @@
 #!/usr/bin/env php
 <?php
 
+use Polidog\Tehilim\Cli\Application;
+
 declare(strict_types=1);
 
 $candidates = [
@@ -13,12 +15,14 @@ foreach ($candidates as $path) {
     if (is_file($path)) {
         require $path;
         $loaded = true;
+
         break;
     }
 }
 if (!$loaded) {
     fwrite(STDERR, "tehilim: composer autoloader not found. Run 'composer install'.\n");
+
     exit(1);
 }
 
-exit((new Polidog\Tehilim\Cli\Application())->run($argv));
+exit((new Application())->run($argv));

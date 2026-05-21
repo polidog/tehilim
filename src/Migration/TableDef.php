@@ -7,10 +7,10 @@ namespace Polidog\Tehilim\Migration;
 final class TableDef
 {
     /**
-     * @param list<ColumnDef>      $columns
-     * @param list<string>         $uniqueColumns          single-column uniques
-     * @param list<string>|null    $compositePrimaryKey    if set, primaryKey is ignored
-     * @param list<list<string>>   $compositeUniqueGroups  multi-column uniques (≥ 2 cols)
+     * @param list<ColumnDef>    $columns
+     * @param list<string>       $uniqueColumns         single-column uniques
+     * @param null|list<string>  $compositePrimaryKey   if set, primaryKey is ignored
+     * @param list<list<string>> $compositeUniqueGroups multi-column uniques (≥ 2 cols)
      */
     public function __construct(
         public readonly string $name,
@@ -27,6 +27,7 @@ final class TableDef
         if ($this->compositePrimaryKey !== null) {
             return $this->compositePrimaryKey;
         }
+
         return $this->primaryKey === null ? [] : [$this->primaryKey];
     }
 }

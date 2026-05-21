@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Polidog\Tehilim\Driver;
 
+use InvalidArgumentException;
 use PDO;
 
 /**
@@ -16,11 +17,12 @@ final class Drivers
     public static function forPdo(PDO $pdo): Driver
     {
         $name = (string) $pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
+
         return match ($name) {
             'sqlite' => new SqliteDriver($pdo),
-            'mysql'  => new MySqlDriver($pdo),
-            'pgsql'  => new PostgresDriver($pdo),
-            default  => throw new \InvalidArgumentException("Unsupported PDO driver: '{$name}'"),
+            'mysql' => new MySqlDriver($pdo),
+            'pgsql' => new PostgresDriver($pdo),
+            default => throw new InvalidArgumentException("Unsupported PDO driver: '{$name}'"),
         };
     }
 }

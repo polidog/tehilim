@@ -60,13 +60,13 @@ final class Model
     {
         $mapBa = array_find(
             $this->blockAttributes,
-            static fn (BlockAttribute $ba): bool =>
-                $ba->name === 'map' && isset($ba->args[0]) && is_string($ba->args[0]),
+            static fn (BlockAttribute $ba): bool => $ba->name === 'map' && isset($ba->args[0]) && is_string($ba->args[0]),
         );
+
         return $mapBa !== null ? (string) $mapBa->args[0] : $this->name;
     }
 
-    /** @return list<string>|null */
+    /** @return null|list<string> */
     public function compositePrimaryKey(): ?array
     {
         $idBa = array_find(
@@ -77,6 +77,7 @@ final class Model
             return null;
         }
         $cols = array_values(array_filter((array) $idBa->args[0], is_string(...)));
+
         return $cols === [] ? null : $cols;
     }
 
@@ -97,6 +98,7 @@ final class Model
                 $out[] = $cols;
             }
         }
+
         return $out;
     }
 }

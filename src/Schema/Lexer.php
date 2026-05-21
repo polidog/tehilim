@@ -24,20 +24,24 @@ final class Lexer
             $c = $this->source[$this->pos];
 
             if ($c === "\n") {
-                $this->line++;
-                $this->pos++;
+                ++$this->line;
+                ++$this->pos;
+
                 continue;
             }
             if (ctype_space($c)) {
-                $this->pos++;
+                ++$this->pos;
+
                 continue;
             }
             if ($c === '/' && $this->peek(1) === '/') {
                 $this->skipLineComment();
+
                 continue;
             }
             if ($c === '/' && $this->peek(1) === '*') {
                 $this->skipBlockComment();
+
                 continue;
             }
 
@@ -77,7 +81,8 @@ final class Lexer
     private function single(TokenType $t, string $v): Token
     {
         $tok = new Token($t, $v, $this->line);
-        $this->pos++;
+        ++$this->pos;
+
         return $tok;
     }
 
@@ -85,17 +90,19 @@ final class Lexer
     {
         $tok = new Token($t, $v, $this->line);
         $this->pos += 2;
+
         return $tok;
     }
 
     private function readString(int $line): Token
     {
-        $this->pos++; // skip opening "
+        ++$this->pos; // skip opening "
         $buf = '';
         while ($this->pos < $this->len) {
             $c = $this->source[$this->pos];
             if ($c === '"') {
-                $this->pos++;
+                ++$this->pos;
+
                 return new Token(TokenType::String, $buf, $line);
             }
             if ($c === '\\') {
@@ -109,14 +116,16 @@ final class Lexer
                     default => throw new ParseException("Unknown escape \\{$next}", $this->line),
                 };
                 $this->pos += 2;
+
                 continue;
             }
             if ($c === "\n") {
-                $this->line++;
+                ++$this->line;
             }
             $buf .= $c;
-            $this->pos++;
+            ++$this->pos;
         }
+
         throw new ParseException('Unterminated string', $line);
     }
 
@@ -124,11 +133,12 @@ final class Lexer
     {
         $start = $this->pos;
         if ($this->source[$this->pos] === '-') {
-            $this->pos++;
+            ++$this->pos;
         }
         while ($this->pos < $this->len && (ctype_digit($this->source[$this->pos]) || $this->source[$this->pos] === '.')) {
-            $this->pos++;
+            ++$this->pos;
         }
+
         return new Token(TokenType::Number, substr($this->source, $start, $this->pos - $start), $line);
     }
 
@@ -136,7 +146,7 @@ final class Lexer
     {
         $start = $this->pos;
         while ($this->pos < $this->len && self::isIdentPart($this->source[$this->pos])) {
-            $this->pos++;
+            ++$this->pos;
         }
         $word = substr($this->source, $start, $this->pos - $start);
 
@@ -151,7 +161,7 @@ final class Lexer
     private function skipLineComment(): void
     {
         while ($this->pos < $this->len && $this->source[$this->pos] !== "\n") {
-            $this->pos++;
+            ++$this->pos;
         }
     }
 
@@ -161,12 +171,13 @@ final class Lexer
         while ($this->pos < $this->len) {
             if ($this->source[$this->pos] === '*' && $this->peek(1) === '/') {
                 $this->pos += 2;
+
                 return;
             }
             if ($this->source[$this->pos] === "\n") {
-                $this->line++;
+                ++$this->line;
             }
-            $this->pos++;
+            ++$this->pos;
         }
     }
 

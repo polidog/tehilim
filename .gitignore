@@ -8,3 +8,4 @@ composer.lock
 .idea/
 .vscode/
 .phpactor.json
+.php-cs-fixer.cache

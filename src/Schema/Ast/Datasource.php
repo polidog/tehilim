@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Polidog\Tehilim\Schema\Ast;
 
+use RuntimeException;
+
 final class Datasource
 {
     /**
@@ -18,14 +20,16 @@ final class Datasource
     {
         $p = $this->options['provider'] ?? null;
         if (!is_string($p)) {
-            throw new \RuntimeException("datasource {$this->name}: 'provider' must be a string");
+            throw new RuntimeException("datasource {$this->name}: 'provider' must be a string");
         }
+
         return $p;
     }
 
     public function url(): ?string
     {
         $u = $this->options['url'] ?? null;
+
         return is_string($u) ? $u : null;
     }
 }

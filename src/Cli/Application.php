@@ -8,6 +8,7 @@ use Polidog\Tehilim\Cli\Command\GenerateCommand;
 use Polidog\Tehilim\Cli\Command\InitCommand;
 use Polidog\Tehilim\Cli\Command\MigrateCommand;
 use Polidog\Tehilim\Cli\Command\PushCommand;
+use Throwable;
 
 final class Application
 {
@@ -26,15 +27,16 @@ final class Application
                 'help', '-h', '--help' => $this->help(),
                 default => $this->unknown($cmd),
             };
-        } catch (\Throwable $e) {
-            fwrite(STDERR, "tehilim: " . $e->getMessage() . "\n");
+        } catch (Throwable $e) {
+            fwrite(STDERR, 'tehilim: ' . $e->getMessage() . "\n");
+
             return 1;
         }
     }
 
     private function help(): int
     {
-        echo <<<TXT
+        echo <<<'TXT'
 tehilim — schema-first PHP database toolkit
 
 Usage:
@@ -49,12 +51,14 @@ Usage:
 Default schema path: ./schema.tehilim
 
 TXT;
+
         return 0;
     }
 
     private function unknown(string $cmd): int
     {
         fwrite(STDERR, "tehilim: unknown command '{$cmd}'. Run 'tehilim help'.\n");
+
         return 1;
     }
 }

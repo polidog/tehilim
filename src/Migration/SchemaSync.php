@@ -7,6 +7,7 @@ namespace Polidog\Tehilim\Migration;
 use PDO;
 use Polidog\Tehilim\Driver\Driver;
 use Polidog\Tehilim\Schema\Ast\Schema;
+use Throwable;
 
 /**
  * Destructive `push`: drops and re-creates every table to match the schema.
@@ -26,6 +27,7 @@ final class SchemaSync
         $pdo = $this->driver->pdo();
 
         $pdo->beginTransaction();
+
         try {
             if ($drop) {
                 foreach ($this->driver->listTables() as $existing) {
@@ -36,8 +38,9 @@ final class SchemaSync
                 $this->runDdl($pdo, $this->driver->createTableSql($t));
             }
             $pdo->commit();
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             $pdo->rollBack();
+
             throw $e;
         }
     }

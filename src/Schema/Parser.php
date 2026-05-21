@@ -31,6 +31,7 @@ final class Parser
         if ($src === false) {
             throw new ParseException("Cannot read schema file: {$path}");
         }
+
         return (new self())->doParse($src);
     }
 
@@ -45,16 +46,23 @@ final class Parser
 
         while (!$this->atEnd()) {
             $kw = $this->expect(TokenType::Ident);
+
             switch ($kw->value) {
                 case 'model':
                     $models[] = $this->parseModel();
+
                     break;
+
                 case 'datasource':
                     $datasources[] = $this->parseDatasource();
+
                     break;
+
                 case 'generator':
                     $generators[] = $this->parseGenerator();
+
                     break;
+
                 default:
                     throw new ParseException("Unknown top-level keyword '{$kw->value}'", $kw->line);
             }
@@ -80,6 +88,7 @@ final class Parser
                     $this->expect(TokenType::RParen);
                 }
                 $blockAttrs[] = new BlockAttribute($attrName, $args);
+
                 continue;
             }
             $fields[] = $this->parseField();
@@ -127,6 +136,7 @@ final class Parser
         $this->expect(TokenType::LBrace);
         $options = $this->parseAssignments();
         $this->expect(TokenType::RBrace);
+
         return new Datasource($name, $options);
     }
 
@@ -136,6 +146,7 @@ final class Parser
         $this->expect(TokenType::LBrace);
         $options = $this->parseAssignments();
         $this->expect(TokenType::RBrace);
+
         return new Generator($name, $options);
     }
 
@@ -148,6 +159,7 @@ final class Parser
             $this->expect(TokenType::Equals);
             $out[$key] = $this->parseValue();
         }
+
         return $out;
     }
 
@@ -171,23 +183,30 @@ final class Parser
                 break;
             }
         }
+
         return $args;
     }
 
     private function parseValue(): mixed
     {
         $tok = $this->advance();
+
         switch ($tok->type) {
             case TokenType::String:
                 return $tok->value;
+
             case TokenType::Number:
                 return str_contains($tok->value, '.') ? (float) $tok->value : (int) $tok->value;
+
             case TokenType::True:
                 return true;
+
             case TokenType::False:
                 return false;
+
             case TokenType::Null:
                 return null;
+
             case TokenType::LBracket:
                 $items = [];
                 if (!$this->check(TokenType::RBracket)) {
@@ -199,7 +218,9 @@ final class Parser
                     }
                 }
                 $this->expect(TokenType::RBracket);
+
                 return $items;
+
             case TokenType::Ident:
                 if ($this->match(TokenType::LParen)) {
                     $args = [];
@@ -212,9 +233,12 @@ final class Parser
                         }
                     }
                     $this->expect(TokenType::RParen);
+
                     return new Invocation($tok->value, $args);
                 }
+
                 return $tok->value;
+
             default:
                 throw new ParseException("Unexpected value token '{$tok->value}'", $tok->line);
         }
@@ -226,6 +250,7 @@ final class Parser
         if ($tok->type !== $t) {
             throw new ParseException("Expected {$t->name} but got {$tok->type->name} '{$tok->value}'", $tok->line);
         }
+
         return $tok;
     }
 
@@ -233,8 +258,10 @@ final class Parser
     {
         if ($this->check($t)) {
             $this->advance();
+
             return true;
         }
+
         return false;
     }
 

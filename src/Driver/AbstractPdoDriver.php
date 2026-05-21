@@ -6,9 +6,11 @@ namespace Polidog\Tehilim\Driver;
 
 use DateTimeImmutable;
 use DateTimeInterface;
+use InvalidArgumentException;
 use PDO;
 use Polidog\Tehilim\Migration\ColumnDef;
 use Polidog\Tehilim\Migration\TableDef;
+use RuntimeException;
 
 abstract class AbstractPdoDriver implements Driver
 {
@@ -46,33 +48,10 @@ abstract class AbstractPdoDriver implements Driver
 
         $pkValue = $data[$primaryKey] ?? $this->pdoInstance->lastInsertId();
         if ($pkValue === false) {
-            throw new \RuntimeException("Cannot determine primary key after insert into {$table}");
+            throw new RuntimeException("Cannot determine primary key after insert into {$table}");
         }
 
         return $this->fetchByPk($table, $primaryKey, $pkValue, $allColumns);
-    }
-
-    /**
-     * @param list<string> $columns
-     * @return array<string,mixed>
-     */
-    protected function fetchByPk(string $table, string $pk, mixed $pkValue, array $columns): array
-    {
-        $cols = $columns === [] ? '*' : implode(', ', array_map($this->quoteIdent(...), $columns));
-        $sql = sprintf(
-            'SELECT %s FROM %s WHERE %s = ?',
-            $cols,
-            $this->quoteIdent($table),
-            $this->quoteIdent($pk),
-        );
-        $stmt = $this->pdoInstance->prepare($sql);
-        $stmt->execute([$pkValue]);
-        $row = $stmt->fetch();
-        if (!is_array($row)) {
-            throw new \RuntimeException("Inserted row not found in {$table} (pk={$pk})");
-        }
-        /** @var array<string,mixed> $row */
-        return $row;
     }
 
     public function createTableSql(TableDef $def): string
@@ -120,6 +99,7 @@ abstract class AbstractPdoDriver implements Driver
     public function createTableIfNotExistsSql(TableDef $def): string
     {
         $sql = $this->createTableSql($def);
+
         return preg_replace('/^CREATE TABLE /', 'CREATE TABLE IF NOT EXISTS ', $sql, 1) ?? $sql;
     }
 
@@ -144,6 +124,7 @@ abstract class AbstractPdoDriver implements Driver
     public function createUniqueIndexSql(string $table, array $columns, string $indexName): string
     {
         $cols = implode(', ', array_map($this->quoteIdent(...), $columns));
+
         return sprintf(
             'CREATE UNIQUE INDEX %s ON %s (%s)',
             $this->quoteIdent($indexName),
@@ -160,19 +141,13 @@ abstract class AbstractPdoDriver implements Driver
     public function multiInsertSql(string $table, array $columns, int $rowCount, bool $skipDuplicates): string
     {
         if ($columns === [] || $rowCount < 1) {
-            throw new \InvalidArgumentException('multiInsertSql: columns and rowCount must be non-empty');
+            throw new InvalidArgumentException('multiInsertSql: columns and rowCount must be non-empty');
         }
         $cols = implode(', ', array_map($this->quoteIdent(...), $columns));
         $tuple = '(' . implode(', ', array_fill(0, count($columns), '?')) . ')';
         $values = implode(', ', array_fill(0, $rowCount, $tuple));
+
         return sprintf('INSERT INTO %s (%s) VALUES %s', $this->quoteIdent($table), $cols, $values);
-    }
-
-    abstract protected function columnSql(ColumnDef $col, bool $isPrimary): string;
-
-    protected function primaryKeyInline(): bool
-    {
-        return false;
     }
 
     public function cast(string $phpType, mixed $value): mixed
@@ -180,6 +155,7 @@ abstract class AbstractPdoDriver implements Driver
         if ($value === null) {
             return null;
         }
+
         return match ($phpType) {
             'int', 'BigInt' => is_int($value) ? $value : (int) $value,
             'float' => (float) $value,
@@ -199,6 +175,7 @@ abstract class AbstractPdoDriver implements Driver
         if ($value === null) {
             return null;
         }
+
         return match ($phpType) {
             'bool' => $value ? 1 : 0,
             'DateTime' => $value instanceof DateTimeInterface
@@ -207,5 +184,37 @@ abstract class AbstractPdoDriver implements Driver
             'json' => is_string($value) ? $value : json_encode($value),
             default => $value,
         };
+    }
+
+    /**
+     * @param list<string> $columns
+     *
+     * @return array<string,mixed>
+     */
+    protected function fetchByPk(string $table, string $pk, mixed $pkValue, array $columns): array
+    {
+        $cols = $columns === [] ? '*' : implode(', ', array_map($this->quoteIdent(...), $columns));
+        $sql = sprintf(
+            'SELECT %s FROM %s WHERE %s = ?',
+            $cols,
+            $this->quoteIdent($table),
+            $this->quoteIdent($pk),
+        );
+        $stmt = $this->pdoInstance->prepare($sql);
+        $stmt->execute([$pkValue]);
+        $row = $stmt->fetch();
+        if (!is_array($row)) {
+            throw new RuntimeException("Inserted row not found in {$table} (pk={$pk})");
+        }
+
+        /** @var array<string,mixed> $row */
+        return $row;
+    }
+
+    abstract protected function columnSql(ColumnDef $col, bool $isPrimary): string;
+
+    protected function primaryKeyInline(): bool
+    {
+        return false;
     }
 }

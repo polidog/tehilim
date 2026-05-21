@@ -15,13 +15,14 @@ final class TypeFormatter
             'Float', 'Decimal' => 'float',
             'Boolean' => 'bool',
             'String', 'Bytes' => 'string',
-            'DateTime' => '\\DateTimeImmutable',
+            'DateTime' => '\DateTimeImmutable',
             'Json' => 'mixed',
             default => 'mixed',
         };
         if ($base === 'mixed') {
             return 'mixed';
         }
+
         return $field->nullable ? "{$base}|null" : $base;
     }
 

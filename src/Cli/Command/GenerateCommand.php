@@ -6,6 +6,7 @@ namespace Polidog\Tehilim\Cli\Command;
 
 use Polidog\Tehilim\Generator\Generator;
 use Polidog\Tehilim\Schema\Parser;
+use RuntimeException;
 
 final class GenerateCommand
 {
@@ -17,7 +18,7 @@ final class GenerateCommand
 
         $gen = $schema->generators[0] ?? null;
         if ($gen === null) {
-            throw new \RuntimeException("schema has no 'generator' block");
+            throw new RuntimeException("schema has no 'generator' block");
         }
 
         $out = $gen->output() ?? './src/Generated';
@@ -30,6 +31,7 @@ final class GenerateCommand
         (new Generator($schema, $out, $ns))->generate();
 
         echo "Generated client in {$out} (namespace {$ns})\n";
+
         return 0;
     }
 }

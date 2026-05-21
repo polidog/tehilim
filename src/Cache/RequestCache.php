@@ -28,10 +28,12 @@ final class RequestCache
     public function has(string $key): bool
     {
         if (array_key_exists($key, $this->entries)) {
-            $this->hits++;
+            ++$this->hits;
+
             return true;
         }
-        $this->misses++;
+        ++$this->misses;
+
         return false;
     }
 
@@ -43,7 +45,7 @@ final class RequestCache
     public function set(string $key, mixed $value): void
     {
         $this->entries[$key] = $value;
-        $this->writes++;
+        ++$this->writes;
     }
 
     public function flush(): void

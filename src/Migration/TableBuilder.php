@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace Polidog\Tehilim\Migration;
 
-use Polidog\Tehilim\Client\Relation;
 use Polidog\Tehilim\Schema\Ast\Field;
 use Polidog\Tehilim\Schema\Ast\Invocation;
 use Polidog\Tehilim\Schema\Ast\Model;
 use Polidog\Tehilim\Schema\Ast\Schema;
 use Polidog\Tehilim\Schema\RelationResolver;
+use Throwable;
 
 /**
  * Translates Schema AST models into TableDef structs used by drivers + diff.
@@ -29,6 +29,7 @@ final class TableBuilder
         foreach (self::joinTables($schema) as $jt) {
             $out[] = $jt;
         }
+
         return $out;
     }
 
@@ -73,7 +74,7 @@ final class TableBuilder
             foreach ($model->relationFields() as $field) {
                 try {
                     $rel = $resolver->resolve($model, $field);
-                } catch (\Throwable) {
+                } catch (Throwable) {
                     continue;
                 }
                 if (!$rel->isManyToMany() || $rel->joinTable === null) {
@@ -112,6 +113,7 @@ final class TableBuilder
                 );
             }
         }
+
         return $out;
     }
 
@@ -137,6 +139,7 @@ final class TableBuilder
             return false;
         }
         $val = $default->args[0] ?? null;
+
         return $val instanceof Invocation && $val->name === 'autoincrement';
     }
 
@@ -150,6 +153,7 @@ final class TableBuilder
         if ($val instanceof Invocation) {
             return $val->name === 'now' ? 'now()' : null;
         }
+
         return $val;
     }
 }

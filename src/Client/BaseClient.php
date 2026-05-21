@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace Polidog\Tehilim\Client;
 
+use Closure;
+use InvalidArgumentException;
 use Polidog\Tehilim\Cache\RequestCache;
 use Polidog\Tehilim\Driver\Driver;
+use Throwable;
 
 abstract class BaseClient
 {
@@ -14,8 +17,8 @@ abstract class BaseClient
 
     private readonly RequestCache $cache;
 
-    /** @var (\Closure(string, string, callable(): mixed): mixed)|null */
-    private ?\Closure $profiler = null;
+    /** @var null|(Closure(string, string, callable(): mixed): mixed) */
+    private ?Closure $profiler = null;
 
     public function __construct(public readonly Driver $driver)
     {
@@ -33,12 +36,13 @@ abstract class BaseClient
      */
     public function withProfiler(?callable $profiler): static
     {
-        $this->profiler = $profiler === null ? null : \Closure::fromCallable($profiler);
+        $this->profiler = $profiler === null ? null : Closure::fromCallable($profiler);
+
         return $this;
     }
 
-    /** @return (\Closure(string, string, callable(): mixed): mixed)|null */
-    public function profiler(): ?\Closure
+    /** @return null|(Closure(string, string, callable(): mixed): mixed) */
+    public function profiler(): ?Closure
     {
         return $this->profiler;
     }
@@ -67,8 +71,10 @@ abstract class BaseClient
      * propagates.
      *
      * @template T
+     *
      * @param callable(static): T $fn
-     * @return T|mixed
+     *
+     * @return mixed|T
      */
     public function transaction(callable $fn): mixed
     {
@@ -77,42 +83,47 @@ abstract class BaseClient
         if ($pdo->inTransaction()) {
             $sp = 'tehilim_sp_' . bin2hex(random_bytes(4));
             $pdo->prepare("SAVEPOINT {$sp}")->execute();
+
             try {
                 $result = $fn($this);
                 $pdo->prepare("RELEASE SAVEPOINT {$sp}")->execute();
+
                 return $result;
             } catch (Rollback $r) {
                 $pdo->prepare("ROLLBACK TO SAVEPOINT {$sp}")->execute();
                 $pdo->prepare("RELEASE SAVEPOINT {$sp}")->execute();
+
                 return $r->payload;
-            } catch (\Throwable $e) {
+            } catch (Throwable $e) {
                 $pdo->prepare("ROLLBACK TO SAVEPOINT {$sp}")->execute();
                 $pdo->prepare("RELEASE SAVEPOINT {$sp}")->execute();
+
                 throw $e;
             }
         }
 
         $pdo->beginTransaction();
+
         try {
             $result = $fn($this);
             $pdo->commit();
+
             return $result;
         } catch (Rollback $r) {
             $this->safeRollback();
+
             return $r->payload;
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             $this->safeRollback();
+
             throw $e;
         }
     }
 
-    private function safeRollback(): void
+    public function modelClient(string $name): BaseModelClient
     {
-        try {
-            $this->driver->pdo()->rollBack();
-        } catch (\Throwable) {
-            // no active transaction — swallow
-        }
+        return $this->clients[$name]
+            ?? throw new InvalidArgumentException("No client registered for model '{$name}'");
     }
 
     protected function registerModel(string $name, BaseModelClient $client): void
@@ -121,9 +132,12 @@ abstract class BaseClient
         $client->bindRoot($this);
     }
 
-    public function modelClient(string $name): BaseModelClient
+    private function safeRollback(): void
     {
-        return $this->clients[$name]
-            ?? throw new \InvalidArgumentException("No client registered for model '{$name}'");
+        try {
+            $this->driver->pdo()->rollBack();
+        } catch (Throwable) {
+            // no active transaction — swallow
+        }
     }
 }

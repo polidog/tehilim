@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Polidog\Tehilim\Driver;
 
+use PDO;
 use Polidog\Tehilim\Migration\ColumnDef;
 
 final class MySqlDriver extends AbstractPdoDriver
@@ -19,7 +20,8 @@ final class MySqlDriver extends AbstractPdoDriver
             'SELECT TABLE_NAME FROM information_schema.tables WHERE table_schema = DATABASE()'
         );
         $stmt->execute();
-        $rows = $stmt->fetchAll(\PDO::FETCH_COLUMN);
+        $rows = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
         return array_map(strval(...), $rows);
     }
 
@@ -38,6 +40,7 @@ final class MySqlDriver extends AbstractPdoDriver
         if ($skipDuplicates) {
             $sql = preg_replace('/^INSERT /', 'INSERT IGNORE ', $sql, 1) ?? $sql;
         }
+
         return $sql;
     }
 
@@ -84,6 +87,7 @@ final class MySqlDriver extends AbstractPdoDriver
         if (is_int($v) || is_float($v)) {
             return (string) $v;
         }
+
         return "'" . str_replace("'", "''", (string) $v) . "'";
     }
 }

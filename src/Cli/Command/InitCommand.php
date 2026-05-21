@@ -13,10 +13,12 @@ final class InitCommand
         $path = $opts['schema'];
         if (file_exists($path)) {
             fwrite(STDERR, "tehilim: {$path} already exists\n");
+
             return 1;
         }
         file_put_contents($path, $this->template());
         echo "Created {$path}\n";
+
         return 0;
     }
 

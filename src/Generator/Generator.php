@@ -9,6 +9,8 @@ use Polidog\Tehilim\Schema\Ast\Field;
 use Polidog\Tehilim\Schema\Ast\Model;
 use Polidog\Tehilim\Schema\Ast\Schema;
 use Polidog\Tehilim\Schema\RelationResolver;
+use RuntimeException;
+use Throwable;
 
 final class Generator
 {
@@ -27,7 +29,7 @@ final class Generator
     {
         $modelDir = $this->outputDir . '/Model';
         if (!is_dir($modelDir) && !mkdir($modelDir, 0755, true) && !is_dir($modelDir)) {
-            throw new \RuntimeException("Cannot create directory: {$modelDir}");
+            throw new RuntimeException("Cannot create directory: {$modelDir}");
         }
 
         foreach ($this->schema->models as $model) {
@@ -294,11 +296,12 @@ PHP;
         foreach ($model->relationFields() as $field) {
             try {
                 $rel = $this->resolver->resolve($model, $field);
-            } catch (\Throwable) {
+            } catch (Throwable) {
                 continue;
             }
             $out[$field->name] = ['relation' => $rel, 'field' => $field];
         }
+
         return $out;
     }
 
@@ -318,10 +321,11 @@ PHP;
                 continue;
             }
             $seen[$target] = true;
-            $fqcn = $this->namespace . '\\Model\\' . $target . 'Client';
+            $fqcn = $this->namespace . '\Model\\' . $target . 'Client';
             $lines .= " * @phpstan-import-type {$target}Row from \\{$fqcn}\n";
             $lines .= " * @phpstan-import-type {$target}WhereUnique from \\{$fqcn}\n";
         }
+
         return $lines;
     }
 
@@ -340,6 +344,7 @@ PHP;
             $type = $rel->isList() ? "list<{$relatedRow}>" : "{$relatedRow}|null";
             $parts[] = "{$name}?: " . $type;
         }
+
         return 'array{' . implode(', ', $parts) . '}';
     }
 
@@ -361,6 +366,7 @@ PHP;
             $unique = $info['relation']->target . 'WhereUnique';
             $parts[] = "{$name}?: array{connect?: list<{$unique}>}";
         }
+
         return 'array{' . implode(', ', $parts) . '}';
     }
 
@@ -380,6 +386,7 @@ PHP;
             $unique = $info['relation']->target . 'WhereUnique';
             $parts[] = "{$name}?: array{connect?: list<{$unique}>, disconnect?: list<{$unique}>, set?: list<{$unique}>}";
         }
+
         return 'array{' . implode(', ', $parts) . '}';
     }
 
@@ -418,6 +425,7 @@ PHP;
         if ($parts === []) {
             return 'array<string,mixed>';
         }
+
         return 'array{' . implode(', ', $parts) . '}';
     }
 
@@ -434,6 +442,7 @@ PHP;
             $sub = 'array{where?: array<string,mixed>, take?: int, skip?: int}';
             $parts[] = "{$name}?: bool|{$sub}";
         }
+
         return 'array{' . implode(', ', $parts) . '}';
     }
 
@@ -455,6 +464,7 @@ PHP;
             return $mapForm;
         }
         $listForm = 'list<' . implode('|', $literals) . '>';
+
         return $mapForm . '|' . $listForm;
     }
 
@@ -517,6 +527,7 @@ PHP;
         if ($f->attribute('default') !== null) {
             return true;
         }
+
         return false;
     }
 
@@ -528,6 +539,7 @@ PHP;
         if ($list === []) {
             return '[]';
         }
+
         return '[' . implode(', ', array_map(static fn (string $v): string => var_export($v, true), $list)) . ']';
     }
 
@@ -543,6 +555,7 @@ PHP;
         foreach ($assoc as $k => $v) {
             $parts[] = var_export($k, true) . ' => ' . var_export($v, true);
         }
+
         return '[' . implode(', ', $parts) . ']';
     }
 }

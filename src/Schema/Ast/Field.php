@@ -33,6 +33,7 @@ final class Field
         if ($map !== null && isset($map->args[0]) && is_string($map->args[0])) {
             return $map->args[0];
         }
+
         return $this->name;
     }
 
@@ -46,6 +47,7 @@ final class Field
         if ($val instanceof Invocation) {
             return in_array($val->name, ['autoincrement', 'uuid', 'cuid'], true);
         }
+
         return false;
     }
 }

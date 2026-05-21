@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Polidog\Tehilim\Schema;
 
+use LogicException;
 use Polidog\Tehilim\Client\Relation;
+use Polidog\Tehilim\Schema\Ast\Attribute;
 use Polidog\Tehilim\Schema\Ast\Field;
 use Polidog\Tehilim\Schema\Ast\Model;
 use Polidog\Tehilim\Schema\Ast\Schema;
@@ -16,7 +18,7 @@ final class RelationResolver
     public function resolve(Model $model, Field $field): Relation
     {
         if ($field->type->isScalar()) {
-            throw new \LogicException("Field '{$field->name}' on {$model->name} is scalar, not a relation");
+            throw new LogicException("Field '{$field->name}' on {$model->name} is scalar, not a relation");
         }
 
         $target = $this->schema->model($field->type->name);
@@ -31,6 +33,7 @@ final class RelationResolver
             if ($fields === [] || $references === []) {
                 throw new ParseException("@relation on {$model->name}.{$field->name} requires 'fields' and 'references'");
             }
+
             return new Relation(
                 kind: Relation::BELONGS_TO,
                 target: $target->name,
@@ -41,11 +44,10 @@ final class RelationResolver
 
         $inverse = array_find(
             $target->relationFields(),
-            static fn (Field $tf): bool =>
-                $tf->type->name === $model->name && $tf->attribute('relation') !== null,
+            static fn (Field $tf): bool => $tf->type->name === $model->name && $tf->attribute('relation') !== null,
         );
         if ($inverse !== null) {
-            /** @var \Polidog\Tehilim\Schema\Ast\Attribute $r */
+            /** @var Attribute $r */
             $r = $inverse->attribute('relation');
             $foreignFields = $this->stringList($r->args['fields'] ?? []);
             $localFields = $this->stringList($r->args['references'] ?? []);
@@ -62,8 +64,7 @@ final class RelationResolver
         if ($field->list) {
             $m2mBack = array_find(
                 $target->relationFields(),
-                static fn (Field $tf): bool =>
-                    $tf->type->name === $model->name
+                static fn (Field $tf): bool => $tf->type->name === $model->name
                     && $tf->list
                     && $tf->attribute('relation') === null,
             );
@@ -113,6 +114,7 @@ final class RelationResolver
         if (!is_array($value)) {
             return [];
         }
+
         return array_values(array_filter($value, is_string(...)));
     }
 }

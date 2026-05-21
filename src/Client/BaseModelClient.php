@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 namespace Polidog\Tehilim\Client;
 
+use InvalidArgumentException;
+use LogicException;
 use Polidog\Tehilim\Cache\RequestCache;
 use Polidog\Tehilim\Driver\Driver;
 use Polidog\Tehilim\Query\WhereCompiler;
+use RuntimeException;
 
 /**
  * Runtime base for generated per-model clients. Generated subclasses provide
@@ -21,9 +24,9 @@ abstract class BaseModelClient
      * Composite primary keys leave this null and skip PK auto-inclusion.
      */
     public const ?string PK = null;
+    protected ?BaseClient $root = null;
 
     private readonly WhereCompiler $whereCompiler;
-    protected ?BaseClient $root = null;
     private bool $useCache = false;
 
     public function __construct(protected readonly Driver $driver)
@@ -53,32 +56,8 @@ abstract class BaseModelClient
     {
         $clone = clone $this;
         $clone->useCache = true;
+
         return $clone;
-    }
-
-    private function activeCache(): ?RequestCache
-    {
-        if (!$this->useCache) {
-            return null;
-        }
-        return $this->root?->cache();
-    }
-
-    /**
-     * Wrap $fn with the root client's profiler (Relayer-compatible
-     * Profiler::measure shape). Zero overhead when no profiler is set.
-     *
-     * @template T
-     * @param callable(): T $fn
-     * @return T
-     */
-    private function profile(string $op, callable $fn): mixed
-    {
-        $profiler = $this->root?->profiler();
-        if ($profiler === null) {
-            return $fn();
-        }
-        return $profiler('tehilim.' . $op, $this->table(), $fn);
     }
 
     abstract protected function table(): string;
@@ -99,7 +78,8 @@ abstract class BaseModelClient
 
     /**
      * @param array{where: array<string,mixed>, include?: array<string,mixed>, select?: array<string,bool>|list<string>} $args
-     * @return array<string,mixed>|null
+     *
+     * @return null|array<string,mixed>
      */
     protected function doFindUnique(array $args): ?array
     {
@@ -108,11 +88,335 @@ abstract class BaseModelClient
 
     /**
      * @param array{where?: array<string,mixed>, orderBy?: array<string,string>|list<array<string,string>>, take?: int, skip?: int, include?: array<string,mixed>, select?: array<string,bool>|list<string>} $args
-     * @return array<string,mixed>|null
+     *
+     * @return null|array<string,mixed>
      */
     protected function doFindFirst(array $args): ?array
     {
         return $this->findOneCached('findFirst', $args);
+    }
+
+    /**
+     * @param array{where?: array<string,mixed>, orderBy?: array<string,string>|list<array<string,string>>, take?: int, skip?: int, include?: array<string,mixed>, select?: array<string,bool>|list<string>} $args
+     *
+     * @return list<array<string,mixed>>
+     */
+    protected function doFindMany(array $args = []): array
+    {
+        $cache = $this->activeCache();
+        $cacheKey = $cache !== null ? $this->cacheKey('findMany', $args) : null;
+        if ($cache !== null && $cacheKey !== null && $cache->has($cacheKey)) {
+            /** @var list<array<string,mixed>> $hit */
+            $hit = $cache->get($cacheKey);
+
+            return $hit;
+        }
+
+        return $this->profile('findMany', function () use ($args, $cache, $cacheKey): array {
+            $out = $this->execFindMany($args);
+            if ($cache !== null && $cacheKey !== null) {
+                $cache->set($cacheKey, $out);
+            }
+
+            return $out;
+        });
+    }
+
+    /**
+     * @param array{data: array<string,mixed>} $args
+     *
+     * @return array<string,mixed>
+     */
+    protected function doInsert(array $args): array
+    {
+        $this->root?->flushCache();
+
+        return $this->profile('insert', function () use ($args): array {
+            [$scalars, $relMutations] = $this->partitionRelationData($args['data']);
+            $types = $this->columnTypes();
+            $bound = [];
+            foreach ($scalars as $col => $val) {
+                $type = $types[$col] ?? 'string';
+                $bound[$col] = $this->driver->bind($type, $val);
+            }
+
+            $row = $this->driver->insertReturning(
+                $this->table(),
+                $this->primaryKey(),
+                $bound,
+                $this->columns(),
+            );
+            $row = $this->castRow($row);
+
+            if ($relMutations !== []) {
+                $this->applyRelationMutations($relMutations, $row, mode: 'insert');
+            }
+
+            return $row;
+        });
+    }
+
+    /**
+     * @param array{where: array<string,mixed>, data: array<string,mixed>} $args
+     *
+     * @return array<string,mixed>
+     */
+    protected function doUpdate(array $args): array
+    {
+        $this->root?->flushCache();
+
+        return $this->profile('update', function () use ($args): array {
+            $where = $args['where'];
+            [$scalars, $relMutations] = $this->partitionRelationData($args['data']);
+            $types = $this->columnTypes();
+
+            if ($scalars !== []) {
+                $setParts = [];
+                $params = [];
+                foreach ($scalars as $col => $val) {
+                    $type = $types[$col] ?? 'string';
+                    $setParts[] = $this->driver->quoteIdent($col) . ' = ?';
+                    $params[] = $this->driver->bind($type, $val);
+                }
+
+                [$whereSql, $whereParams] = $this->compileWhere($where);
+                $params = [...$params, ...$whereParams];
+
+                $sql = sprintf(
+                    'UPDATE %s SET %s WHERE %s',
+                    $this->driver->quoteIdent($this->table()),
+                    implode(', ', $setParts),
+                    $whereSql,
+                );
+
+                $stmt = $this->driver->pdo()->prepare($sql);
+                $stmt->execute($params);
+            }
+
+            $row = $this->doFindFirst(['where' => $where]);
+            if ($row === null) {
+                throw new RuntimeException('Updated row not found');
+            }
+
+            if ($relMutations !== []) {
+                $this->applyRelationMutations($relMutations, $row, mode: 'update');
+            }
+
+            return $row;
+        });
+    }
+
+    /**
+     * @param array{where: array<string,mixed>} $args
+     *
+     * @return array<string,mixed>
+     */
+    protected function doDelete(array $args): array
+    {
+        $this->root?->flushCache();
+
+        return $this->profile('delete', function () use ($args): array {
+            $row = $this->doFindFirst(['where' => $args['where']]);
+            if ($row === null) {
+                throw new RuntimeException('Row to delete not found');
+            }
+
+            [$whereSql, $params] = $this->compileWhere($args['where']);
+            $sql = sprintf(
+                'DELETE FROM %s WHERE %s',
+                $this->driver->quoteIdent($this->table()),
+                $whereSql,
+            );
+            $stmt = $this->driver->pdo()->prepare($sql);
+            $stmt->execute($params);
+
+            return $row;
+        });
+    }
+
+    /**
+     * @param array{where: array<string,mixed>, update: array<string,mixed>, insert: array<string,mixed>} $args
+     *
+     * @return array<string,mixed>
+     */
+    protected function doUpsert(array $args): array
+    {
+        $this->root?->flushCache();
+
+        return $this->profile('upsert', function () use ($args): array {
+            $existing = $this->doFindFirst(['where' => $args['where']]);
+            if ($existing !== null) {
+                return $this->doUpdate(['where' => $args['where'], 'data' => $args['update']]);
+            }
+
+            return $this->doInsert(['data' => $args['insert']]);
+        });
+    }
+
+    /**
+     * @param array{data: list<array<string,mixed>>, skipDuplicates?: bool} $args
+     *
+     * @return array{count: int}
+     */
+    protected function doInsertMany(array $args): array
+    {
+        $this->root?->flushCache();
+
+        return $this->profile('insertMany', function () use ($args): array {
+            $rows = $args['data'];
+            if ($rows === []) {
+                return ['count' => 0];
+            }
+            $skipDup = (bool) ($args['skipDuplicates'] ?? false);
+            $types = $this->columnTypes();
+
+            $columnSet = [];
+            foreach ($rows as $r) {
+                foreach (array_keys($r) as $k) {
+                    $columnSet[$k] = true;
+                }
+            }
+            $columns = array_keys($columnSet);
+
+            $params = [];
+            foreach ($rows as $r) {
+                foreach ($columns as $c) {
+                    $v = $r[$c] ?? null;
+                    $type = $types[$c] ?? 'string';
+                    $params[] = $v === null ? null : $this->driver->bind($type, $v);
+                }
+            }
+
+            $sql = $this->driver->multiInsertSql($this->table(), $columns, count($rows), $skipDup);
+            $stmt = $this->driver->pdo()->prepare($sql);
+            $stmt->execute($params);
+
+            return ['count' => $stmt->rowCount()];
+        });
+    }
+
+    /**
+     * @param array{where?: array<string,mixed>, data: array<string,mixed>} $args
+     *
+     * @return array{count: int}
+     */
+    protected function doUpdateMany(array $args): array
+    {
+        $this->root?->flushCache();
+
+        return $this->profile('updateMany', function () use ($args): array {
+            $where = $args['where'] ?? [];
+            $data = $args['data'];
+            if ($data === []) {
+                return ['count' => 0];
+            }
+            $types = $this->columnTypes();
+
+            $setParts = [];
+            $params = [];
+            foreach ($data as $col => $val) {
+                $type = $types[$col] ?? 'string';
+                $setParts[] = $this->driver->quoteIdent($col) . ' = ?';
+                $params[] = $this->driver->bind($type, $val);
+            }
+
+            [$whereSql, $whereParams] = $this->compileWhere($where);
+            $params = [...$params, ...$whereParams];
+
+            $sql = sprintf(
+                'UPDATE %s SET %s WHERE %s',
+                $this->driver->quoteIdent($this->table()),
+                implode(', ', $setParts),
+                $whereSql,
+            );
+            $stmt = $this->driver->pdo()->prepare($sql);
+            $stmt->execute($params);
+
+            return ['count' => $stmt->rowCount()];
+        });
+    }
+
+    /**
+     * @param array{where?: array<string,mixed>} $args
+     *
+     * @return array{count: int}
+     */
+    protected function doDeleteMany(array $args = []): array
+    {
+        $this->root?->flushCache();
+
+        return $this->profile('deleteMany', function () use ($args): array {
+            [$whereSql, $params] = $this->compileWhere($args['where'] ?? []);
+            $sql = sprintf(
+                'DELETE FROM %s WHERE %s',
+                $this->driver->quoteIdent($this->table()),
+                $whereSql,
+            );
+            $stmt = $this->driver->pdo()->prepare($sql);
+            $stmt->execute($params);
+
+            return ['count' => $stmt->rowCount()];
+        });
+    }
+
+    /**
+     * @param array{where?: array<string,mixed>} $args
+     */
+    protected function doCount(array $args = []): int
+    {
+        $cache = $this->activeCache();
+        $cacheKey = $cache !== null ? $this->cacheKey('count', $args) : null;
+        if ($cache !== null && $cacheKey !== null && $cache->has($cacheKey)) {
+            return (int) $cache->get($cacheKey);
+        }
+
+        return $this->profile('count', function () use ($args, $cache, $cacheKey): int {
+            [$whereSql, $params] = $this->compileWhere($args['where'] ?? []);
+            $sql = sprintf(
+                'SELECT COUNT(*) AS c FROM %s WHERE %s',
+                $this->driver->quoteIdent($this->table()),
+                $whereSql,
+            );
+            $stmt = $this->driver->pdo()->prepare($sql);
+            $stmt->execute($params);
+            $row = $stmt->fetch();
+            $count = (int) ($row['c'] ?? 0);
+
+            if ($cache !== null && $cacheKey !== null) {
+                $cache->set($cacheKey, $count);
+            }
+
+            return $count;
+        });
+    }
+
+    private function activeCache(): ?RequestCache
+    {
+        if (!$this->useCache) {
+            return null;
+        }
+
+        return $this->root?->cache();
+    }
+
+    /**
+     * Wrap $fn with the root client's profiler (Relayer-compatible
+     * Profiler::measure shape). Zero overhead when no profiler is set.
+     *
+     * @template T
+     *
+     * @param callable(): T $fn
+     *
+     * @return T
+     */
+    private function profile(string $op, callable $fn): mixed
+    {
+        $profiler = $this->root?->profiler();
+        if ($profiler === null) {
+            return $fn();
+        }
+
+        return $profiler('tehilim.' . $op, $this->table(), $fn);
     }
 
     /**
@@ -122,15 +426,17 @@ abstract class BaseModelClient
      * implementation produced.
      *
      * @param array<string,mixed> $args
-     * @return array<string,mixed>|null
+     *
+     * @return null|array<string,mixed>
      */
     private function findOneCached(string $op, array $args): ?array
     {
         $cache = $this->activeCache();
         $cacheKey = $cache !== null ? $this->cacheKey($op, $args) : null;
         if ($cache !== null && $cacheKey !== null && $cache->has($cacheKey)) {
-            /** @var array<string,mixed>|null $hit */
+            /** @var null|array<string,mixed> $hit */
             $hit = $cache->get($cacheKey);
+
             return $hit;
         }
 
@@ -141,35 +447,14 @@ abstract class BaseModelClient
             if ($cache !== null && $cacheKey !== null) {
                 $cache->set($cacheKey, $row);
             }
+
             return $row;
         });
     }
 
     /**
      * @param array{where?: array<string,mixed>, orderBy?: array<string,string>|list<array<string,string>>, take?: int, skip?: int, include?: array<string,mixed>, select?: array<string,bool>|list<string>} $args
-     * @return list<array<string,mixed>>
-     */
-    protected function doFindMany(array $args = []): array
-    {
-        $cache = $this->activeCache();
-        $cacheKey = $cache !== null ? $this->cacheKey('findMany', $args) : null;
-        if ($cache !== null && $cacheKey !== null && $cache->has($cacheKey)) {
-            /** @var list<array<string,mixed>> $hit */
-            $hit = $cache->get($cacheKey);
-            return $hit;
-        }
-
-        return $this->profile('findMany', function () use ($args, $cache, $cacheKey): array {
-            $out = $this->execFindMany($args);
-            if ($cache !== null && $cacheKey !== null) {
-                $cache->set($cacheKey, $out);
-            }
-            return $out;
-        });
-    }
-
-    /**
-     * @param array{where?: array<string,mixed>, orderBy?: array<string,string>|list<array<string,string>>, take?: int, skip?: int, include?: array<string,mixed>, select?: array<string,bool>|list<string>} $args
+     *
      * @return list<array<string,mixed>>
      */
     private function execFindMany(array $args): array
@@ -213,256 +498,9 @@ abstract class BaseModelClient
     }
 
     /**
-     * @param array{data: array<string,mixed>} $args
-     * @return array<string,mixed>
-     */
-    protected function doInsert(array $args): array
-    {
-        $this->root?->flushCache();
-        return $this->profile('insert', function () use ($args): array {
-            [$scalars, $relMutations] = $this->partitionRelationData($args['data']);
-            $types = $this->columnTypes();
-            $bound = [];
-            foreach ($scalars as $col => $val) {
-                $type = $types[$col] ?? 'string';
-                $bound[$col] = $this->driver->bind($type, $val);
-            }
-
-            $row = $this->driver->insertReturning(
-                $this->table(),
-                $this->primaryKey(),
-                $bound,
-                $this->columns(),
-            );
-            $row = $this->castRow($row);
-
-            if ($relMutations !== []) {
-                $this->applyRelationMutations($relMutations, $row, mode: 'insert');
-            }
-            return $row;
-        });
-    }
-
-    /**
-     * @param array{where: array<string,mixed>, data: array<string,mixed>} $args
-     * @return array<string,mixed>
-     */
-    protected function doUpdate(array $args): array
-    {
-        $this->root?->flushCache();
-        return $this->profile('update', function () use ($args): array {
-            $where = $args['where'];
-            [$scalars, $relMutations] = $this->partitionRelationData($args['data']);
-            $types = $this->columnTypes();
-
-            if ($scalars !== []) {
-                $setParts = [];
-                $params = [];
-                foreach ($scalars as $col => $val) {
-                    $type = $types[$col] ?? 'string';
-                    $setParts[] = $this->driver->quoteIdent($col) . ' = ?';
-                    $params[] = $this->driver->bind($type, $val);
-                }
-
-                [$whereSql, $whereParams] = $this->compileWhere($where);
-                $params = [...$params, ...$whereParams];
-
-                $sql = sprintf(
-                    'UPDATE %s SET %s WHERE %s',
-                    $this->driver->quoteIdent($this->table()),
-                    implode(', ', $setParts),
-                    $whereSql,
-                );
-
-                $stmt = $this->driver->pdo()->prepare($sql);
-                $stmt->execute($params);
-            }
-
-            $row = $this->doFindFirst(['where' => $where]);
-            if ($row === null) {
-                throw new \RuntimeException('Updated row not found');
-            }
-
-            if ($relMutations !== []) {
-                $this->applyRelationMutations($relMutations, $row, mode: 'update');
-            }
-            return $row;
-        });
-    }
-
-    /**
-     * @param array{where: array<string,mixed>} $args
-     * @return array<string,mixed>
-     */
-    protected function doDelete(array $args): array
-    {
-        $this->root?->flushCache();
-        return $this->profile('delete', function () use ($args): array {
-            $row = $this->doFindFirst(['where' => $args['where']]);
-            if ($row === null) {
-                throw new \RuntimeException('Row to delete not found');
-            }
-
-            [$whereSql, $params] = $this->compileWhere($args['where']);
-            $sql = sprintf(
-                'DELETE FROM %s WHERE %s',
-                $this->driver->quoteIdent($this->table()),
-                $whereSql,
-            );
-            $stmt = $this->driver->pdo()->prepare($sql);
-            $stmt->execute($params);
-
-            return $row;
-        });
-    }
-
-    /**
-     * @param array{where: array<string,mixed>, update: array<string,mixed>, insert: array<string,mixed>} $args
-     * @return array<string,mixed>
-     */
-    protected function doUpsert(array $args): array
-    {
-        $this->root?->flushCache();
-        return $this->profile('upsert', function () use ($args): array {
-            $existing = $this->doFindFirst(['where' => $args['where']]);
-            if ($existing !== null) {
-                return $this->doUpdate(['where' => $args['where'], 'data' => $args['update']]);
-            }
-            return $this->doInsert(['data' => $args['insert']]);
-        });
-    }
-
-    /**
-     * @param array{data: list<array<string,mixed>>, skipDuplicates?: bool} $args
-     * @return array{count: int}
-     */
-    protected function doInsertMany(array $args): array
-    {
-        $this->root?->flushCache();
-        return $this->profile('insertMany', function () use ($args): array {
-            $rows = $args['data'];
-            if ($rows === []) {
-                return ['count' => 0];
-            }
-            $skipDup = (bool) ($args['skipDuplicates'] ?? false);
-            $types = $this->columnTypes();
-
-            $columnSet = [];
-            foreach ($rows as $r) {
-                foreach (array_keys($r) as $k) {
-                    $columnSet[$k] = true;
-                }
-            }
-            $columns = array_keys($columnSet);
-
-            $params = [];
-            foreach ($rows as $r) {
-                foreach ($columns as $c) {
-                    $v = $r[$c] ?? null;
-                    $type = $types[$c] ?? 'string';
-                    $params[] = $v === null ? null : $this->driver->bind($type, $v);
-                }
-            }
-
-            $sql = $this->driver->multiInsertSql($this->table(), $columns, count($rows), $skipDup);
-            $stmt = $this->driver->pdo()->prepare($sql);
-            $stmt->execute($params);
-
-            return ['count' => $stmt->rowCount()];
-        });
-    }
-
-    /**
-     * @param array{where?: array<string,mixed>, data: array<string,mixed>} $args
-     * @return array{count: int}
-     */
-    protected function doUpdateMany(array $args): array
-    {
-        $this->root?->flushCache();
-        return $this->profile('updateMany', function () use ($args): array {
-            $where = $args['where'] ?? [];
-            $data = $args['data'];
-            if ($data === []) {
-                return ['count' => 0];
-            }
-            $types = $this->columnTypes();
-
-            $setParts = [];
-            $params = [];
-            foreach ($data as $col => $val) {
-                $type = $types[$col] ?? 'string';
-                $setParts[] = $this->driver->quoteIdent($col) . ' = ?';
-                $params[] = $this->driver->bind($type, $val);
-            }
-
-            [$whereSql, $whereParams] = $this->compileWhere($where);
-            $params = [...$params, ...$whereParams];
-
-            $sql = sprintf(
-                'UPDATE %s SET %s WHERE %s',
-                $this->driver->quoteIdent($this->table()),
-                implode(', ', $setParts),
-                $whereSql,
-            );
-            $stmt = $this->driver->pdo()->prepare($sql);
-            $stmt->execute($params);
-            return ['count' => $stmt->rowCount()];
-        });
-    }
-
-    /**
-     * @param array{where?: array<string,mixed>} $args
-     * @return array{count: int}
-     */
-    protected function doDeleteMany(array $args = []): array
-    {
-        $this->root?->flushCache();
-        return $this->profile('deleteMany', function () use ($args): array {
-            [$whereSql, $params] = $this->compileWhere($args['where'] ?? []);
-            $sql = sprintf(
-                'DELETE FROM %s WHERE %s',
-                $this->driver->quoteIdent($this->table()),
-                $whereSql,
-            );
-            $stmt = $this->driver->pdo()->prepare($sql);
-            $stmt->execute($params);
-            return ['count' => $stmt->rowCount()];
-        });
-    }
-
-    /**
-     * @param array{where?: array<string,mixed>} $args
-     */
-    protected function doCount(array $args = []): int
-    {
-        $cache = $this->activeCache();
-        $cacheKey = $cache !== null ? $this->cacheKey('count', $args) : null;
-        if ($cache !== null && $cacheKey !== null && $cache->has($cacheKey)) {
-            return (int) $cache->get($cacheKey);
-        }
-
-        return $this->profile('count', function () use ($args, $cache, $cacheKey): int {
-            [$whereSql, $params] = $this->compileWhere($args['where'] ?? []);
-            $sql = sprintf(
-                'SELECT COUNT(*) AS c FROM %s WHERE %s',
-                $this->driver->quoteIdent($this->table()),
-                $whereSql,
-            );
-            $stmt = $this->driver->pdo()->prepare($sql);
-            $stmt->execute($params);
-            $row = $stmt->fetch();
-            $count = (int) ($row['c'] ?? 0);
-
-            if ($cache !== null && $cacheKey !== null) {
-                $cache->set($cacheKey, $count);
-            }
-            return $count;
-        });
-    }
-
-    /**
      * @param list<array<string,mixed>> $rows
      * @param array<string,mixed>       $include
+     *
      * @return list<array<string,mixed>>
      */
     private function attachIncludes(array $rows, array $include): array
@@ -473,18 +511,20 @@ abstract class BaseModelClient
                 continue;
             }
             $relation = $relations[$name]
-                ?? throw new \InvalidArgumentException("Unknown relation '{$name}' on " . $this->table());
+                ?? throw new InvalidArgumentException("Unknown relation '{$name}' on " . $this->table());
 
             /** @var array<string,mixed> $subArgs */
             $subArgs = $spec === true ? [] : (array) $spec;
             $rows = $this->loadRelation($rows, $name, $relation, $subArgs);
         }
+
         return $rows;
     }
 
     /**
-     * @param list<array<string,mixed>>  $rows
-     * @param array<string,mixed>        $subArgs
+     * @param list<array<string,mixed>> $rows
+     * @param array<string,mixed>       $subArgs
+     *
      * @return list<array<string,mixed>>
      */
     private function loadRelation(array $rows, string $name, Relation $relation, array $subArgs): array
@@ -494,7 +534,7 @@ abstract class BaseModelClient
         }
 
         if (count($relation->localFields) !== 1 || count($relation->foreignFields) !== 1) {
-            throw new \LogicException("Composite-key relations are not supported in v1 (relation '{$name}')");
+            throw new LogicException("Composite-key relations are not supported in v1 (relation '{$name}')");
         }
         $localField = $relation->localFields[0];
         $foreignField = $relation->foreignFields[0];
@@ -513,7 +553,7 @@ abstract class BaseModelClient
         }
 
         if ($this->root === null) {
-            throw new \LogicException('include requires root client; was the model registered?');
+            throw new LogicException('include requires root client; was the model registered?');
         }
 
         $targetClient = $this->root->modelClient($relation->target);
@@ -544,6 +584,7 @@ abstract class BaseModelClient
 
     /**
      * @param list<array<string,mixed>> $rows
+     *
      * @return list<array<string,mixed>>
      */
     private function emptyRelationFill(array $rows, string $name, Relation $relation): array
@@ -551,21 +592,23 @@ abstract class BaseModelClient
         foreach ($rows as $i => $_) {
             $rows[$i][$name] = $relation->isList() ? [] : null;
         }
+
         return $rows;
     }
 
     /**
      * @param list<array<string,mixed>> $rows
      * @param array<string,mixed>       $subArgs
+     *
      * @return list<array<string,mixed>>
      */
     private function loadManyToMany(array $rows, string $name, Relation $relation, array $subArgs): array
     {
         if ($this->root === null) {
-            throw new \LogicException('include requires root client; was the model registered?');
+            throw new LogicException('include requires root client; was the model registered?');
         }
         if ($relation->joinTable === null || $relation->joinLocalColumn === null || $relation->joinForeignColumn === null) {
-            throw new \LogicException("M2M relation '{$name}' is missing join metadata");
+            throw new LogicException("M2M relation '{$name}' is missing join metadata");
         }
 
         $localPk = $relation->localFields[0];
@@ -599,7 +642,7 @@ abstract class BaseModelClient
         $foreignIdsByLocal = [];
         $foreignIdSet = [];
         foreach ($joinRows as $jr) {
-            $localId   = $jr[$relation->joinLocalColumn]   ?? null;
+            $localId = $jr[$relation->joinLocalColumn] ?? null;
             $foreignId = $jr[$relation->joinForeignColumn] ?? null;
             if ($localId === null || $foreignId === null) {
                 continue;
@@ -630,6 +673,7 @@ abstract class BaseModelClient
             $localId = $row[$localPk] ?? null;
             if ($localId === null) {
                 $rows[$i][$name] = [];
+
                 continue;
             }
             $matched = [];
@@ -654,7 +698,7 @@ abstract class BaseModelClient
     private function applyManyToManyMutation(Relation $relation, mixed $localId, array $spec): void
     {
         if ($relation->joinTable === null || $relation->joinLocalColumn === null || $relation->joinForeignColumn === null) {
-            throw new \LogicException('M2M mutation requires join metadata');
+            throw new LogicException('M2M mutation requires join metadata');
         }
         $foreignPk = $relation->foreignFields[0];
         $localCol = $this->driver->quoteIdent($relation->joinLocalColumn);
@@ -673,7 +717,7 @@ abstract class BaseModelClient
             );
             foreach ($spec['disconnect'] as $where) {
                 if (!array_key_exists($foreignPk, $where)) {
-                    throw new \InvalidArgumentException(
+                    throw new InvalidArgumentException(
                         "disconnect requires the foreign PK '{$foreignPk}' to be present"
                     );
                 }
@@ -699,7 +743,7 @@ abstract class BaseModelClient
         );
         foreach ($wheres as $where) {
             if (!array_key_exists($foreignPk, $where)) {
-                throw new \InvalidArgumentException(
+                throw new InvalidArgumentException(
                     "connect/set requires the foreign PK '{$foreignPk}' to be present"
                 );
             }
@@ -711,6 +755,7 @@ abstract class BaseModelClient
      * Split `data` into (scalar columns to write, relation manipulations).
      *
      * @param array<string,mixed> $data
+     *
      * @return array{0: array<string,mixed>, 1: array<string, array<string,mixed>>}
      */
     private function partitionRelationData(array $data): array
@@ -725,6 +770,7 @@ abstract class BaseModelClient
                 $scalars[$k] = $v;
             }
         }
+
         return [$scalars, $rels];
     }
 
@@ -738,20 +784,20 @@ abstract class BaseModelClient
         foreach ($mutations as $name => $spec) {
             $rel = $relations[$name] ?? null;
             if ($rel === null) {
-                throw new \InvalidArgumentException("Unknown relation '{$name}' on " . $this->table());
+                throw new InvalidArgumentException("Unknown relation '{$name}' on " . $this->table());
             }
             if (!$rel->isManyToMany()) {
-                throw new \InvalidArgumentException(
+                throw new InvalidArgumentException(
                     "Relation manipulation is currently only supported for many-to-many ('{$name}' is {$rel->kind})"
                 );
             }
             $localPk = $rel->localFields[0];
             $localId = $parentRow[$localPk] ?? null;
             if ($localId === null) {
-                throw new \LogicException("Cannot manipulate '{$name}': parent row has no value for '{$localPk}'");
+                throw new LogicException("Cannot manipulate '{$name}': parent row has no value for '{$localPk}'");
             }
             if ($mode === 'insert' && (isset($spec['disconnect']) || array_key_exists('set', $spec))) {
-                throw new \InvalidArgumentException(
+                throw new InvalidArgumentException(
                     "insert only supports 'connect' on M2M relations (got '{$name}')"
                 );
             }
@@ -761,6 +807,7 @@ abstract class BaseModelClient
 
     /**
      * @param array<string,mixed> $where
+     *
      * @return array{0:string,1:list<mixed>}
      */
     private function compileWhere(array $where): array
@@ -774,6 +821,7 @@ abstract class BaseModelClient
     private function cacheKey(string $op, array $args): string
     {
         $hash = $args |> serialize(...) |> md5(...);
+
         return "{$this->table()}:{$op}:{$hash}";
     }
 
@@ -781,7 +829,8 @@ abstract class BaseModelClient
      * Accepts both shorthand list form (`['id', 'email']`) and map form
      * (`['id' => true, 'email' => true]`). PK is auto-included.
      *
-     * @param array<string,bool>|list<string>|null $select
+     * @param null|array<string,bool>|list<string> $select
+     *
      * @return list<string>
      */
     private function resolveSelect(?array $select): array
@@ -817,6 +866,7 @@ abstract class BaseModelClient
         if ($pk !== null && !in_array($pk, $picked, true)) {
             $picked[] = $pk;
         }
+
         return $picked;
     }
 
@@ -828,11 +878,12 @@ abstract class BaseModelClient
         if ($columns === []) {
             return '*';
         }
+
         return implode(', ', array_map($this->driver->quoteIdent(...), $columns));
     }
 
     /**
-     * @param array<string,string>|list<array<string,string>>|null $orderBy
+     * @param null|array<string,string>|list<array<string,string>> $orderBy
      */
     private function orderByClause(mixed $orderBy): string
     {
@@ -847,16 +898,18 @@ abstract class BaseModelClient
             foreach ($entry as $col => $dir) {
                 $dirUp = strtoupper((string) $dir);
                 if (!in_array($dirUp, ['ASC', 'DESC'], true)) {
-                    throw new \InvalidArgumentException("orderBy direction must be 'asc' or 'desc'");
+                    throw new InvalidArgumentException("orderBy direction must be 'asc' or 'desc'");
                 }
                 $parts[] = $this->driver->quoteIdent($col) . ' ' . $dirUp;
             }
         }
+
         return $parts === [] ? '' : ' ORDER BY ' . implode(', ', $parts);
     }
 
     /**
      * @param array<string,mixed> $row
+     *
      * @return array<string,mixed>
      */
     private function castRow(array $row): array
@@ -867,6 +920,7 @@ abstract class BaseModelClient
             $type = $types[$col] ?? 'string';
             $out[$col] = $this->driver->cast($type, $val);
         }
+
         return $out;
     }
 }
