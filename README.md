@@ -48,6 +48,7 @@ model User {
   email     String   @unique
   name      String?
   createdAt DateTime @default(now())
+  posts     Post[]
 }
 
 model Post {
@@ -56,6 +57,7 @@ model Post {
   body      String?
   published Boolean  @default(false)
   authorId  Int
+  author    User     @relation(fields: [authorId], references: [id])
   createdAt DateTime @default(now())
 }
 ```
@@ -63,17 +65,27 @@ model Post {
 ## Workflow
 
 ```bash
-vendor/bin/tehilim init       # write a starter schema.tehilim
-vendor/bin/tehilim push       # create tables in the configured DB (destructive in v0)
-vendor/bin/tehilim generate   # generate the typed client
+vendor/bin/tehilim init                 # write a starter schema.tehilim
+vendor/bin/tehilim generate             # (re)generate the typed client
+vendor/bin/tehilim migrate dev --name init   # diff, write, and apply a migration
+vendor/bin/tehilim migrate deploy       # apply unapplied migrations (CI/prod)
+vendor/bin/tehilim migrate status       # list applied / pending
+vendor/bin/tehilim migrate reset        # drop everything and re-apply (DEV ONLY)
+
+# Prototyping shortcut — drop+recreate everything, no history:
+vendor/bin/tehilim push
 ```
 
-## Using the generated client
+Migrations live under `./migrations/<YYYYmmddHHMMSSvvv>_<slug>/migration.sql`
+with a `_snapshot.tehilim` alongside; applied migrations are recorded in
+the `_tehilim_migrations` table.
+
+## Connecting
 
 You bring your own PDO — Tehilim picks the right driver from
 `PDO::ATTR_DRIVER_NAME`. This lets you keep ownership of connection
 attributes (charset, timezone, persistent flag, statement cache, etc.) and
-makes it easy to share a PDO with the rest of your stack.
+makes it easy to share the connection with the rest of your stack.
 
 ```php
 use App\Generated\TehilimClient;
@@ -83,24 +95,26 @@ $db  = TehilimClient::fromPdo($pdo);
 
 // Or, if you'd rather have Tehilim parse a URL for you:
 // $db = TehilimClient::fromUrl('mysql://user:pass@host/db');
+```
 
+## Single-row CRUD
+
+```php
 $alice = $db->user->create(['data' => [
     'email' => 'alice@example.com',
     'name'  => 'Alice',
 ]]);
-// $alice: array{id:int, email:string, name:string|null, createdAt:\DateTimeImmutable}
+// $alice: array{id:int, email:string, name:string|null, createdAt:\DateTimeImmutable, posts?: list<PostRow>}
 
 $found = $db->user->findUnique(['where' => ['email' => 'alice@example.com']]);
 if ($found !== null) {
-    echo $found['name'];          // PHPStan knows: string|null
-    echo $found['nope'];          // PHPStan error: not a key of array{...}
+    echo $found['name'];   // PHPStan knows: string|null
+    echo $found['nope'];   // PHPStan error: not a key of array{...}
 }
 
-$published = $db->post->findMany([
-    'where'   => ['published' => true, 'authorId' => $alice['id']],
-    'orderBy' => ['createdAt' => 'desc'],
-    'take'    => 20,
-]);
+$db->user->update(['where' => ['id' => $alice['id']], 'data' => ['name' => 'Alice C']]);
+$db->user->delete(['where' => ['id' => $alice['id']]]);
+$count = $db->user->count(['where' => ['name' => ['startsWith' => 'A']]]);
 ```
 
 ## Where operators
@@ -117,14 +131,148 @@ $db->post->findMany([
         ],
         'published' => true,
     ],
+    'orderBy' => ['createdAt' => 'desc'],
+    'take'    => 20,
 ]);
 ```
 
+## Relations: `include` and `select`
+
+Relations declared in the schema become optional keys on each row. Ask for
+them with `include`; Tehilim runs one batched `IN` query per relation and
+merges the results.
+
+```php
+// hasMany: User.posts
+$users = $db->user->findMany([
+    'include' => ['posts' => ['where' => ['published' => true]]],
+    'orderBy' => ['id' => 'asc'],
+]);
+foreach ($users as $u) {
+    foreach ($u['posts'] ?? [] as $p) { echo "  {$p['title']}\n"; }
+}
+
+// belongsTo: Post.author
+$posts = $db->post->findMany([
+    'include' => ['author' => true],
+]);
+
+// Project a subset of columns (PK is always kept):
+$slim = $db->user->findMany([
+    'select' => ['id' => true, 'email' => true],
+]);
+```
+
+## Composite keys
+
+```text
+model Enrollment {
+  userId   Int
+  courseId Int
+  grade    String?
+
+  @@id([userId, courseId])
+}
+
+model Member {
+  id       Int    @id @default(autoincrement())
+  tenantId Int
+  email    String
+
+  @@unique([tenantId, email])
+}
+```
+
+Composite columns become optional keys on `WhereUnique` so `findUnique` /
+`update` / `delete` keep working:
+
+```php
+$db->enrollment->findUnique(['where' => ['userId' => 1, 'courseId' => 100]]);
+$db->member->findUnique(['where' => ['tenantId' => 1, 'email' => 'a@x']]);
+```
+
+## Bulk and upsert
+
+```php
+$db->user->createMany([
+    'data' => [
+        ['email' => 'a@x'],
+        ['email' => 'b@x'],
+        ['email' => 'a@x'],   // duplicate
+    ],
+    'skipDuplicates' => true,  // SQLite OR IGNORE / MySQL IGNORE / pg ON CONFLICT
+]);  // => ['count' => 2]
+
+$db->user->updateMany([
+    'where' => ['active' => false],
+    'data'  => ['archived' => true],
+]);  // => ['count' => N]
+
+$db->user->deleteMany(['where' => ['archived' => true]]);
+
+$db->user->upsert([
+    'where'  => ['email' => 'a@x'],
+    'create' => ['email' => 'a@x', 'name' => 'A'],
+    'update' => ['name'  => 'A'],
+]);  // returns the resulting row
+```
+
+## Transactions
+
+`transaction()` runs the callback inside a transaction, commits on success,
+rolls back on any throwable. Nested calls use `SAVEPOINT`, so a failed inner
+block doesn't kill the outer transaction.
+
+```php
+use Polidog\Tehilim\Client\Rollback;
+
+$alice = $db->transaction(function ($tx) {
+    $u = $tx->user->create(['data' => ['email' => 'a@x']]);
+    $tx->post->create(['data' => ['title' => 'Hello', 'authorId' => $u['id']]]);
+    return $u;
+});
+
+// Throw Rollback to abort silently; the payload is returned to the caller.
+$result = $db->transaction(function ($tx) {
+    $tx->user->create(['data' => ['email' => 'temp@x']]);
+    throw new Rollback('discarded');
+});  // $result === 'discarded'; nothing persisted
+
+// Nested: inner failure does NOT abort the outer
+$db->transaction(function ($tx) {
+    $tx->user->create(['data' => ['email' => 'outer@x']]);
+    try {
+        $tx->transaction(function ($t2) {
+            $t2->user->create(['data' => ['email' => 'inner@x']]);
+            throw new \RuntimeException('inner fail');
+        });
+    } catch (\RuntimeException) {
+        // inner SAVEPOINT rolled back; outer keeps going
+    }
+    $tx->user->create(['data' => ['email' => 'after@x']]);
+});
+```
+
+The closure parameter is typed as the concrete generated client, so
+`$tx->user`, `$tx->post`, etc. are fully autocompleted and PHPStan-checked.
+
 ## Status
 
-v0 — happy path. Things still to come: relation includes / joins, migration
-history (only destructive `push` today), composite unique keys, transactions
-on the per-model client, batch operations.
+v0.1 — usable for prototyping and small apps. Implemented:
+
+- Single-row CRUD with array-shape PHPDoc types
+- where operators + AND/OR/NOT
+- `include` (hasMany / belongsTo / hasOne) + `select`
+- `@@id` / `@@unique` composite keys
+- `createMany` / `updateMany` / `deleteMany` / `upsert`
+- `transaction()` with nested SAVEPOINTs and `Rollback`
+- File-based migration history (`migrate dev` / `deploy` / `status` / `reset`)
+- SQLite, MySQL/MariaDB, PostgreSQL drivers
+
+Not yet: many-to-many implicit relations, raw SQL escape hatch
+(`$queryRaw` / `$executeRaw`), JSON path queries, full-text search,
+isolation-level control on transactions, schema introspection from an
+existing DB.
 
 ## License
 
