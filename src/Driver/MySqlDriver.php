@@ -13,6 +13,15 @@ final class MySqlDriver extends AbstractPdoDriver
         return '`' . str_replace('`', '``', $name) . '`';
     }
 
+    public function dropIndexSql(string $indexName, string $table): string
+    {
+        return sprintf(
+            'DROP INDEX %s ON %s',
+            $this->quoteIdent($indexName),
+            $this->quoteIdent($table),
+        );
+    }
+
     protected function columnSql(ColumnDef $col, bool $isPrimary): string
     {
         $parts = [$this->quoteIdent($col->name), $this->sqlType($col)];

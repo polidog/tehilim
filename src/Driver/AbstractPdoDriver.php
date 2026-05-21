@@ -105,6 +105,45 @@ abstract class AbstractPdoDriver implements Driver
         return 'DROP TABLE IF EXISTS ' . $this->quoteIdent($table);
     }
 
+    public function createTableIfNotExistsSql(TableDef $def): string
+    {
+        $sql = $this->createTableSql($def);
+        return preg_replace('/^CREATE TABLE /', 'CREATE TABLE IF NOT EXISTS ', $sql, 1) ?? $sql;
+    }
+
+    public function addColumnSql(string $table, ColumnDef $col): string
+    {
+        return sprintf(
+            'ALTER TABLE %s ADD COLUMN %s',
+            $this->quoteIdent($table),
+            $this->columnSql($col, false),
+        );
+    }
+
+    public function dropColumnSql(string $table, string $col): string
+    {
+        return sprintf(
+            'ALTER TABLE %s DROP COLUMN %s',
+            $this->quoteIdent($table),
+            $this->quoteIdent($col),
+        );
+    }
+
+    public function createUniqueIndexSql(string $table, string $column, string $indexName): string
+    {
+        return sprintf(
+            'CREATE UNIQUE INDEX %s ON %s (%s)',
+            $this->quoteIdent($indexName),
+            $this->quoteIdent($table),
+            $this->quoteIdent($column),
+        );
+    }
+
+    public function dropIndexSql(string $indexName, string $table): string
+    {
+        return 'DROP INDEX ' . $this->quoteIdent($indexName);
+    }
+
     abstract protected function columnSql(ColumnDef $col, bool $isPrimary): string;
 
     protected function primaryKeyInline(): bool

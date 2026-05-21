@@ -6,6 +6,7 @@ namespace Polidog\Tehilim\Cli;
 
 use Polidog\Tehilim\Cli\Command\GenerateCommand;
 use Polidog\Tehilim\Cli\Command\InitCommand;
+use Polidog\Tehilim\Cli\Command\MigrateCommand;
 use Polidog\Tehilim\Cli\Command\PushCommand;
 
 final class Application
@@ -21,6 +22,7 @@ final class Application
                 'init' => (new InitCommand())->run($args),
                 'generate', 'gen' => (new GenerateCommand())->run($args),
                 'push' => (new PushCommand())->run($args),
+                'migrate' => (new MigrateCommand())->run($args),
                 'help', '-h', '--help' => $this->help(),
                 default => $this->unknown($cmd),
             };
@@ -38,7 +40,11 @@ tehilim — schema-first PHP database toolkit
 Usage:
   tehilim init [--schema <path>]            Create a starter schema.tehilim
   tehilim generate [--schema <path>]        Generate typed client from schema
-  tehilim push [--schema <path>]            Sync schema to the database (destructive in v0)
+  tehilim push [--schema <path>]            Sync schema to DB destructively (prototyping)
+  tehilim migrate dev    --name <slug>      Diff schema, write a migration, apply it
+  tehilim migrate deploy                    Apply unapplied migrations
+  tehilim migrate status                    Show applied / pending migrations
+  tehilim migrate reset                     Drop tables + re-apply all (DEV ONLY)
 
 Default schema path: ./schema.tehilim
 

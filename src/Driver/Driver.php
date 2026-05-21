@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Polidog\Tehilim\Driver;
 
 use PDO;
+use Polidog\Tehilim\Migration\ColumnDef;
 use Polidog\Tehilim\Migration\TableDef;
 
 interface Driver
@@ -24,7 +25,17 @@ interface Driver
 
     public function createTableSql(TableDef $def): string;
 
+    public function createTableIfNotExistsSql(TableDef $def): string;
+
     public function dropTableIfExistsSql(string $table): string;
+
+    public function addColumnSql(string $table, ColumnDef $col): string;
+
+    public function dropColumnSql(string $table, string $col): string;
+
+    public function createUniqueIndexSql(string $table, string $column, string $indexName): string;
+
+    public function dropIndexSql(string $indexName, string $table): string;
 
     /**
      * Convert a value coming back from PDO into the schema-declared PHP type.
