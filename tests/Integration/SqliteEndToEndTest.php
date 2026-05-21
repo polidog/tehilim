@@ -53,9 +53,9 @@ TXT;
         (new Generator($schema, $outDir, 'Test\\Gen'))->generate();
 
         self::assertFileExists($outDir . '/TehilimClient.php');
-        self::assertFileExists($outDir . '/Model/UserClient.php');
+        self::assertFileExists($outDir . '/Model/User.php');
 
-        require $outDir . '/Model/UserClient.php';
+        require $outDir . '/Model/User.php';
         require $outDir . '/TehilimClient.php';
 
         $driver = Drivers::forPdo(Config::pdo('sqlite::memory:'));

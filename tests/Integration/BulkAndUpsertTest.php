@@ -104,7 +104,7 @@ TXT);
 
         $outDir = $this->workDir . '/gen-' . strtolower($ns);
         (new Generator($schema, $outDir, $ns . '\\Gen'))->generate();
-        require $outDir . '/Model/UserClient.php';
+        require $outDir . '/Model/User.php';
         require $outDir . '/TehilimClient.php';
 
         $driver = Drivers::forPdo(Config::pdo('sqlite::memory:'));

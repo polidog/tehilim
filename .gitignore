@@ -9,3 +9,4 @@ composer.lock
 .vscode/
 .phpactor.json
 .php-cs-fixer.cache
+/examples/*/generated/

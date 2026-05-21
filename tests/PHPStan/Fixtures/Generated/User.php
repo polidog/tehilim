@@ -15,7 +15,7 @@ use Polidog\Tehilim\Client\BaseModelClient;
  * @phpstan-type UserWhereInput array<string,mixed>
  * @phpstan-type UserSelect array{id?: bool, email?: bool, name?: bool, age?: bool}|list<'id'|'email'|'name'|'age'>
  */
-final class UserClient extends BaseModelClient
+final class User extends BaseModelClient
 {
     public const ?string PK = 'id';
 
@@ -24,7 +24,7 @@ final class UserClient extends BaseModelClient
         return 'User';
     }
 
-    protected function primaryKey(): ?string
+    protected function primaryKey(): string
     {
         return 'id';
     }

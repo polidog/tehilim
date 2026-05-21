@@ -11,8 +11,8 @@ every field thanks to generated `@phpstan-type` definitions.
 
 ```text
 schema.tehilim ──► tehilim generate ──► Generated/TehilimClient.php
-                                        Generated/Model/UserClient.php
-                                        Generated/Model/PostClient.php
+                                        Generated/Model/User.php
+                                        Generated/Model/Post.php
 ```
 
 ## Why arrays, not objects?
