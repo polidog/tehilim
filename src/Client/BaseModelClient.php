@@ -51,7 +51,7 @@ abstract class BaseModelClient
     }
 
     /**
-     * @param array{where: array<string,mixed>, include?: array<string,mixed>, select?: array<string,bool>} $args
+     * @param array{where: array<string,mixed>, include?: array<string,mixed>, select?: array<string,bool>|list<string>} $args
      * @return array<string,mixed>|null
      */
     protected function doFindUnique(array $args): ?array
@@ -60,7 +60,7 @@ abstract class BaseModelClient
     }
 
     /**
-     * @param array{where?: array<string,mixed>, orderBy?: array<string,string>|list<array<string,string>>, take?: int, skip?: int, include?: array<string,mixed>, select?: array<string,bool>} $args
+     * @param array{where?: array<string,mixed>, orderBy?: array<string,string>|list<array<string,string>>, take?: int, skip?: int, include?: array<string,mixed>, select?: array<string,bool>|list<string>} $args
      * @return array<string,mixed>|null
      */
     protected function doFindFirst(array $args): ?array
@@ -71,7 +71,7 @@ abstract class BaseModelClient
     }
 
     /**
-     * @param array{where?: array<string,mixed>, orderBy?: array<string,string>|list<array<string,string>>, take?: int, skip?: int, include?: array<string,mixed>, select?: array<string,bool>} $args
+     * @param array{where?: array<string,mixed>, orderBy?: array<string,string>|list<array<string,string>>, take?: int, skip?: int, include?: array<string,mixed>, select?: array<string,bool>|list<string>} $args
      * @return list<array<string,mixed>>
      */
     protected function doFindMany(array $args = []): array
