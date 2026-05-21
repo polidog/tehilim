@@ -18,12 +18,7 @@ final class Model
 
     public function field(string $name): ?Field
     {
-        foreach ($this->fields as $f) {
-            if ($f->name === $name) {
-                return $f;
-            }
-        }
-        return null;
+        return array_find($this->fields, static fn (Field $f): bool => $f->name === $name);
     }
 
     /** @return list<Field> */
@@ -46,12 +41,10 @@ final class Model
 
     public function primaryKey(): ?Field
     {
-        foreach ($this->scalarFields() as $f) {
-            if ($f->hasAttribute('id')) {
-                return $f;
-            }
-        }
-        return null;
+        return array_find(
+            $this->scalarFields(),
+            static fn (Field $f): bool => $f->hasAttribute('id'),
+        );
     }
 
     /** @return list<Field> */
@@ -65,33 +58,26 @@ final class Model
 
     public function tableName(): string
     {
-        foreach ($this->blockAttributes as $ba) {
-            if ($ba->name === 'map' && isset($ba->args[0]) && is_string($ba->args[0])) {
-                return $ba->args[0];
-            }
-        }
-        return $this->name;
+        $mapBa = array_find(
+            $this->blockAttributes,
+            static fn (BlockAttribute $ba): bool =>
+                $ba->name === 'map' && isset($ba->args[0]) && is_string($ba->args[0]),
+        );
+        return $mapBa !== null ? (string) $mapBa->args[0] : $this->name;
     }
 
     /** @return list<string>|null */
     public function compositePrimaryKey(): ?array
     {
-        foreach ($this->blockAttributes as $ba) {
-            if ($ba->name !== 'id') {
-                continue;
-            }
-            $val = $ba->args[0] ?? null;
-            if (is_array($val)) {
-                $cols = [];
-                foreach ($val as $c) {
-                    if (is_string($c)) {
-                        $cols[] = $c;
-                    }
-                }
-                return $cols === [] ? null : $cols;
-            }
+        $idBa = array_find(
+            $this->blockAttributes,
+            static fn (BlockAttribute $ba): bool => $ba->name === 'id' && is_array($ba->args[0] ?? null),
+        );
+        if ($idBa === null) {
+            return null;
         }
-        return null;
+        $cols = array_values(array_filter((array) $idBa->args[0], is_string(...)));
+        return $cols === [] ? null : $cols;
     }
 
     /** @return list<list<string>> */
@@ -106,12 +92,7 @@ final class Model
             if (!is_array($val)) {
                 continue;
             }
-            $cols = [];
-            foreach ($val as $c) {
-                if (is_string($c)) {
-                    $cols[] = $c;
-                }
-            }
+            $cols = array_values(array_filter($val, is_string(...)));
             if (count($cols) >= 2) {
                 $out[] = $cols;
             }

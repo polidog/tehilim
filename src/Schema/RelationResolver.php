@@ -41,25 +41,24 @@ final class RelationResolver
             );
         }
 
-        foreach ($target->relationFields() as $tf) {
-            if ($tf->type->name !== $model->name) {
-                continue;
-            }
-            $r = $tf->attribute('relation');
-            if ($r === null) {
-                continue;
-            }
+        $inverse = array_find(
+            $target->relationFields(),
+            static fn (\Polidog\Tehilim\Schema\Ast\Field $tf): bool =>
+                $tf->type->name === $model->name && $tf->attribute('relation') !== null,
+        );
+        if ($inverse !== null) {
+            /** @var \Polidog\Tehilim\Schema\Ast\Attribute $r */
+            $r = $inverse->attribute('relation');
             $foreignFields = $this->stringList($r->args['fields'] ?? []);
             $localFields = $this->stringList($r->args['references'] ?? []);
-            if ($foreignFields === [] || $localFields === []) {
-                continue;
+            if ($foreignFields !== [] && $localFields !== []) {
+                return new Relation(
+                    kind: $field->list ? Relation::HAS_MANY : Relation::HAS_ONE,
+                    target: $target->name,
+                    localFields: $localFields,
+                    foreignFields: $foreignFields,
+                );
             }
-            return new Relation(
-                kind: $field->list ? Relation::HAS_MANY : Relation::HAS_ONE,
-                target: $target->name,
-                localFields: $localFields,
-                foreignFields: $foreignFields,
-            );
         }
 
         throw new ParseException(

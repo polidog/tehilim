@@ -19,11 +19,6 @@ final class Schema
 
     public function model(string $name): ?Model
     {
-        foreach ($this->models as $m) {
-            if ($m->name === $name) {
-                return $m;
-            }
-        }
-        return null;
+        return array_find($this->models, static fn (Model $m): bool => $m->name === $name);
     }
 }

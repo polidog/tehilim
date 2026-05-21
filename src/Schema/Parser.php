@@ -16,8 +16,8 @@ use Polidog\Tehilim\Schema\Ast\Schema;
 
 final class Parser
 {
-    /** @var list<Token> */
-    private array $tokens = [];
+    /** @var non-empty-list<Token> */
+    private array $tokens;
     private int $pos = 0;
 
     public static function parseString(string $source): Schema
@@ -245,7 +245,7 @@ final class Parser
 
     private function peekType(int $offset): TokenType
     {
-        return ($this->tokens[$this->pos + $offset] ?? $this->tokens[array_key_last($this->tokens)])->type;
+        return ($this->tokens[$this->pos + $offset] ?? array_last($this->tokens))->type;
     }
 
     private function advance(): Token

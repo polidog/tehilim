@@ -15,7 +15,7 @@ final class Lexer
         $this->len = strlen($source);
     }
 
-    /** @return list<Token> */
+    /** @return non-empty-list<Token> */
     public function tokenize(): array
     {
         $tokens = [];

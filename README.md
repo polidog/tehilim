@@ -26,7 +26,7 @@ shapes, and the static analyser does the work of catching shape mismatches.
 composer require polidog/tehilim
 ```
 
-PHP 8.3+, PDO with SQLite / MySQL / PostgreSQL.
+PHP 8.5+, PDO with SQLite / MySQL / PostgreSQL.
 
 ## Schema
 

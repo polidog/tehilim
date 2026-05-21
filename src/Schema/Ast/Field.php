@@ -19,12 +19,7 @@ final class Field
 
     public function attribute(string $name): ?Attribute
     {
-        foreach ($this->attributes as $a) {
-            if ($a->name === $name) {
-                return $a;
-            }
-        }
-        return null;
+        return array_find($this->attributes, static fn (Attribute $a): bool => $a->name === $name);
     }
 
     public function hasAttribute(string $name): bool

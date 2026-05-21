@@ -70,14 +70,11 @@ abstract class BaseModelClient
     protected function doFindMany(array $args = []): array
     {
         $cache = $this->root?->cache();
-        $cacheKey = null;
-        if ($cache !== null) {
-            $cacheKey = $this->cacheKey('findMany', $args);
-            if ($cache->has($cacheKey)) {
-                /** @var list<array<string,mixed>> $hit */
-                $hit = $cache->get($cacheKey);
-                return $hit;
-            }
+        $cacheKey = $cache !== null ? $this->cacheKey('findMany', $args) : null;
+        if ($cache !== null && $cacheKey !== null && $cache->has($cacheKey)) {
+            /** @var list<array<string,mixed>> $hit */
+            $hit = $cache->get($cacheKey);
+            return $hit;
         }
 
         $select = $this->resolveSelect($args['select'] ?? null);
@@ -321,12 +318,9 @@ abstract class BaseModelClient
     protected function doCount(array $args = []): int
     {
         $cache = $this->root?->cache();
-        $cacheKey = null;
-        if ($cache !== null) {
-            $cacheKey = $this->cacheKey('count', $args);
-            if ($cache->has($cacheKey)) {
-                return (int) $cache->get($cacheKey);
-            }
+        $cacheKey = $cache !== null ? $this->cacheKey('count', $args) : null;
+        if ($cache !== null && $cacheKey !== null && $cache->has($cacheKey)) {
+            return (int) $cache->get($cacheKey);
         }
 
         [$whereSql, $params] = $this->compileWhere($args['where'] ?? []);
@@ -450,7 +444,8 @@ abstract class BaseModelClient
      */
     private function cacheKey(string $op, array $args): string
     {
-        return $this->table() . ':' . $op . ':' . md5(serialize($args));
+        $hash = $args |> serialize(...) |> md5(...);
+        return "{$this->table()}:{$op}:{$hash}";
     }
 
     /**
@@ -499,13 +494,10 @@ abstract class BaseModelClient
      */
     private function orderByClause(mixed $orderBy): string
     {
-        if ($orderBy === null) {
-            return '';
-        }
         if (!is_array($orderBy) || $orderBy === []) {
             return '';
         }
-        $list = is_int(array_key_first($orderBy)) ? $orderBy : [$orderBy];
+        $list = array_is_list($orderBy) ? $orderBy : [$orderBy];
 
         $parts = [];
         foreach ($list as $entry) {
