@@ -9,6 +9,7 @@ use Polidog\Tehilim\Client\Relation;
 
 /**
  * @phpstan-import-type UserRow from \Example\Blog\Generated\Model\UserClient
+ * @phpstan-import-type UserWhereUnique from \Example\Blog\Generated\Model\UserClient
  * @phpstan-type PostRow array{id: int, title: string, body: string|null, published: bool, authorId: int, createdAt: \DateTimeImmutable, author?: UserRow|null}
  * @phpstan-type PostInsertInput array{id?: int, title: string, body?: string|null, published?: bool, authorId: int, createdAt?: \DateTimeImmutable}
  * @phpstan-type PostUpdateInput array{id?: int, title?: string, body?: string|null, published?: bool, authorId?: int, createdAt?: \DateTimeImmutable}

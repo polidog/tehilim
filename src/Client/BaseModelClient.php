@@ -126,10 +126,10 @@ abstract class BaseModelClient
     protected function doInsert(array $args): array
     {
         $this->root?->flushCache();
-        $data = $args['data'];
+        [$scalars, $relMutations] = $this->partitionRelationData($args['data']);
         $types = $this->columnTypes();
         $bound = [];
-        foreach ($data as $col => $val) {
+        foreach ($scalars as $col => $val) {
             $type = $types[$col] ?? 'string';
             $bound[$col] = $this->driver->bind($type, $val);
         }
@@ -140,7 +140,12 @@ abstract class BaseModelClient
             $bound,
             $this->columns(),
         );
-        return $this->castRow($row);
+        $row = $this->castRow($row);
+
+        if ($relMutations !== []) {
+            $this->applyRelationMutations($relMutations, $row, mode: 'insert');
+        }
+        return $row;
     }
 
     /**
@@ -151,33 +156,39 @@ abstract class BaseModelClient
     {
         $this->root?->flushCache();
         $where = $args['where'];
-        $data = $args['data'];
+        [$scalars, $relMutations] = $this->partitionRelationData($args['data']);
         $types = $this->columnTypes();
 
-        $setParts = [];
-        $params = [];
-        foreach ($data as $col => $val) {
-            $type = $types[$col] ?? 'string';
-            $setParts[] = $this->driver->quoteIdent($col) . ' = ?';
-            $params[] = $this->driver->bind($type, $val);
+        if ($scalars !== []) {
+            $setParts = [];
+            $params = [];
+            foreach ($scalars as $col => $val) {
+                $type = $types[$col] ?? 'string';
+                $setParts[] = $this->driver->quoteIdent($col) . ' = ?';
+                $params[] = $this->driver->bind($type, $val);
+            }
+
+            [$whereSql, $whereParams] = $this->compileWhere($where);
+            $params = [...$params, ...$whereParams];
+
+            $sql = sprintf(
+                'UPDATE %s SET %s WHERE %s',
+                $this->driver->quoteIdent($this->table()),
+                implode(', ', $setParts),
+                $whereSql,
+            );
+
+            $stmt = $this->driver->pdo()->prepare($sql);
+            $stmt->execute($params);
         }
-
-        [$whereSql, $whereParams] = $this->compileWhere($where);
-        $params = [...$params, ...$whereParams];
-
-        $sql = sprintf(
-            'UPDATE %s SET %s WHERE %s',
-            $this->driver->quoteIdent($this->table()),
-            implode(', ', $setParts),
-            $whereSql,
-        );
-
-        $stmt = $this->driver->pdo()->prepare($sql);
-        $stmt->execute($params);
 
         $row = $this->doFindFirst(['where' => $where]);
         if ($row === null) {
             throw new \RuntimeException('Updated row not found');
+        }
+
+        if ($relMutations !== []) {
+            $this->applyRelationMutations($relMutations, $row, mode: 'update');
         }
         return $row;
     }
@@ -369,6 +380,10 @@ abstract class BaseModelClient
      */
     private function loadRelation(array $rows, string $name, Relation $relation, array $subArgs): array
     {
+        if ($relation->isManyToMany()) {
+            return $this->loadManyToMany($rows, $name, $relation, $subArgs);
+        }
+
         if (count($relation->localFields) !== 1 || count($relation->foreignFields) !== 1) {
             throw new \LogicException("Composite-key relations are not supported in v1 (relation '{$name}')");
         }
@@ -428,6 +443,211 @@ abstract class BaseModelClient
             $rows[$i][$name] = $relation->isList() ? [] : null;
         }
         return $rows;
+    }
+
+    /**
+     * @param list<array<string,mixed>> $rows
+     * @param array<string,mixed>       $subArgs
+     * @return list<array<string,mixed>>
+     */
+    private function loadManyToMany(array $rows, string $name, Relation $relation, array $subArgs): array
+    {
+        if ($this->root === null) {
+            throw new \LogicException('include requires root client; was the model registered?');
+        }
+        if ($relation->joinTable === null || $relation->joinLocalColumn === null || $relation->joinForeignColumn === null) {
+            throw new \LogicException("M2M relation '{$name}' is missing join metadata");
+        }
+
+        $localPk = $relation->localFields[0];
+        $foreignPk = $relation->foreignFields[0];
+
+        $localIds = [];
+        foreach ($rows as $row) {
+            $v = $row[$localPk] ?? null;
+            if ($v !== null) {
+                $localIds[] = $v;
+            }
+        }
+        $localIds = array_values(array_unique($localIds, SORT_REGULAR));
+        if ($localIds === []) {
+            return $this->emptyRelationFill($rows, $name, $relation);
+        }
+
+        $marks = implode(', ', array_fill(0, count($localIds), '?'));
+        $sql = sprintf(
+            'SELECT %s, %s FROM %s WHERE %s IN (%s)',
+            $this->driver->quoteIdent($relation->joinLocalColumn),
+            $this->driver->quoteIdent($relation->joinForeignColumn),
+            $this->driver->quoteIdent($relation->joinTable),
+            $this->driver->quoteIdent($relation->joinLocalColumn),
+            $marks,
+        );
+        $stmt = $this->driver->pdo()->prepare($sql);
+        $stmt->execute($localIds);
+        $joinRows = $stmt->fetchAll();
+
+        $foreignIdsByLocal = [];
+        $foreignIdSet = [];
+        foreach ($joinRows as $jr) {
+            $localId   = $jr[$relation->joinLocalColumn]   ?? null;
+            $foreignId = $jr[$relation->joinForeignColumn] ?? null;
+            if ($localId === null || $foreignId === null) {
+                continue;
+            }
+            $foreignIdsByLocal[(string) $localId][] = $foreignId;
+            $foreignIdSet[(string) $foreignId] = $foreignId;
+        }
+
+        if ($foreignIdSet === []) {
+            return $this->emptyRelationFill($rows, $name, $relation);
+        }
+
+        $targetClient = $this->root->modelClient($relation->target);
+        $where = $subArgs['where'] ?? [];
+        $where[$foreignPk] = ['in' => array_values($foreignIdSet)];
+        $subArgs['where'] = $where;
+        $targets = $targetClient->doFindMany($subArgs);
+
+        $targetsByPk = [];
+        foreach ($targets as $t) {
+            $k = $t[$foreignPk] ?? null;
+            if ($k !== null) {
+                $targetsByPk[(string) $k] = $t;
+            }
+        }
+
+        foreach ($rows as $i => $row) {
+            $localId = $row[$localPk] ?? null;
+            if ($localId === null) {
+                $rows[$i][$name] = [];
+                continue;
+            }
+            $matched = [];
+            foreach ($foreignIdsByLocal[(string) $localId] ?? [] as $fid) {
+                $hit = $targetsByPk[(string) $fid] ?? null;
+                if ($hit !== null) {
+                    $matched[] = $hit;
+                }
+            }
+            $rows[$i][$name] = $matched;
+        }
+
+        return $rows;
+    }
+
+    /**
+     * Apply connect/disconnect/set for an M2M relation. The local PK value
+     * must already be known (use after the parent INSERT or in UPDATE).
+     *
+     * @param array{connect?: list<array<string,mixed>>, disconnect?: list<array<string,mixed>>, set?: list<array<string,mixed>>} $spec
+     */
+    private function applyManyToManyMutation(Relation $relation, mixed $localId, array $spec): void
+    {
+        if ($relation->joinTable === null || $relation->joinLocalColumn === null || $relation->joinForeignColumn === null) {
+            throw new \LogicException('M2M mutation requires join metadata');
+        }
+        $foreignPk = $relation->foreignFields[0];
+        $localCol = $this->driver->quoteIdent($relation->joinLocalColumn);
+        $foreignCol = $this->driver->quoteIdent($relation->joinForeignColumn);
+        $table = $this->driver->quoteIdent($relation->joinTable);
+
+        if (array_key_exists('set', $spec)) {
+            $del = $this->driver->pdo()->prepare("DELETE FROM {$table} WHERE {$localCol} = ?");
+            $del->execute([$localId]);
+            $this->connectMany($table, $localCol, $foreignCol, $localId, $spec['set'], $foreignPk);
+        }
+
+        if (!empty($spec['disconnect'])) {
+            $del = $this->driver->pdo()->prepare(
+                "DELETE FROM {$table} WHERE {$localCol} = ? AND {$foreignCol} = ?"
+            );
+            foreach ($spec['disconnect'] as $where) {
+                if (!array_key_exists($foreignPk, $where)) {
+                    throw new \InvalidArgumentException(
+                        "disconnect requires the foreign PK '{$foreignPk}' to be present"
+                    );
+                }
+                $del->execute([$localId, $where[$foreignPk]]);
+            }
+        }
+
+        if (!empty($spec['connect'])) {
+            $this->connectMany($table, $localCol, $foreignCol, $localId, $spec['connect'], $foreignPk);
+        }
+    }
+
+    /**
+     * @param list<array<string,mixed>> $wheres
+     */
+    private function connectMany(string $table, string $localCol, string $foreignCol, mixed $localId, array $wheres, string $foreignPk): void
+    {
+        if ($wheres === []) {
+            return;
+        }
+        $ins = $this->driver->pdo()->prepare(
+            "INSERT INTO {$table} ({$localCol}, {$foreignCol}) VALUES (?, ?)"
+        );
+        foreach ($wheres as $where) {
+            if (!array_key_exists($foreignPk, $where)) {
+                throw new \InvalidArgumentException(
+                    "connect/set requires the foreign PK '{$foreignPk}' to be present"
+                );
+            }
+            $ins->execute([$localId, $where[$foreignPk]]);
+        }
+    }
+
+    /**
+     * Split `data` into (scalar columns to write, relation manipulations).
+     *
+     * @param array<string,mixed> $data
+     * @return array{0: array<string,mixed>, 1: array<string, array<string,mixed>>}
+     */
+    private function partitionRelationData(array $data): array
+    {
+        $relations = $this->relations();
+        $scalars = [];
+        $rels = [];
+        foreach ($data as $k => $v) {
+            if (isset($relations[$k]) && is_array($v)) {
+                $rels[$k] = $v;
+            } else {
+                $scalars[$k] = $v;
+            }
+        }
+        return [$scalars, $rels];
+    }
+
+    /**
+     * @param array<string, array<string,mixed>> $mutations
+     * @param array<string,mixed>                $parentRow
+     */
+    private function applyRelationMutations(array $mutations, array $parentRow, string $mode): void
+    {
+        $relations = $this->relations();
+        foreach ($mutations as $name => $spec) {
+            $rel = $relations[$name] ?? null;
+            if ($rel === null) {
+                throw new \InvalidArgumentException("Unknown relation '{$name}' on " . $this->table());
+            }
+            if (!$rel->isManyToMany()) {
+                throw new \InvalidArgumentException(
+                    "Relation manipulation is currently only supported for many-to-many ('{$name}' is {$rel->kind})"
+                );
+            }
+            $localPk = $rel->localFields[0];
+            $localId = $parentRow[$localPk] ?? null;
+            if ($localId === null) {
+                throw new \LogicException("Cannot manipulate '{$name}': parent row has no value for '{$localPk}'");
+            }
+            if ($mode === 'insert' && (isset($spec['disconnect']) || array_key_exists('set', $spec))) {
+                throw new \InvalidArgumentException(
+                    "insert only supports 'connect' on M2M relations (got '{$name}')"
+                );
+            }
+            $this->applyManyToManyMutation($rel, $localId, $spec);
+        }
     }
 
     /**

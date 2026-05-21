@@ -13,6 +13,16 @@ final class MySqlDriver extends AbstractPdoDriver
         return '`' . str_replace('`', '``', $name) . '`';
     }
 
+    public function listTables(): array
+    {
+        $stmt = $this->pdoInstance->prepare(
+            'SELECT TABLE_NAME FROM information_schema.tables WHERE table_schema = DATABASE()'
+        );
+        $stmt->execute();
+        $rows = $stmt->fetchAll(\PDO::FETCH_COLUMN);
+        return array_map(strval(...), $rows);
+    }
+
     public function dropIndexSql(string $indexName, string $table): string
     {
         return sprintf(

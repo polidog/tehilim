@@ -165,6 +165,59 @@ $slim = $db->user->findMany([
 ]);
 ```
 
+## Many-to-many
+
+Declare a list relation on both sides with no `@relation` and Tehilim
+treats it as an implicit M2M, auto-creating an `_AToB`-style join table
+(model names sorted alphabetically, columns `A` and `B` for the PKs).
+
+```text
+model Post {
+  id    Int    @id @default(autoincrement())
+  title String
+  tags  Tag[]
+}
+
+model Tag {
+  id    Int    @id @default(autoincrement())
+  name  String @unique
+  posts Post[]
+}
+```
+
+Load with `include` (one batched `IN` query per side):
+
+```php
+$posts = $db->post->findMany(['include' => ['tags' => true]]);
+$tags  = $db->tag->findMany([
+    'include' => ['posts' => ['where' => ['published' => true]]],
+]);
+```
+
+Mutate edges with `connect` / `disconnect` / `set` (callers supply the
+foreign PK):
+
+```php
+$db->post->insert(['data' => [
+    'title' => 'Hello',
+    'tags'  => ['connect' => [['id' => 1], ['id' => 2]]],
+]]);
+
+$db->post->update([
+    'where' => ['id' => 1],
+    'data'  => ['tags' => ['disconnect' => [['id' => 2]]]],
+]);
+
+$db->post->update([
+    'where' => ['id' => 1],
+    'data'  => ['tags' => ['set' => [['id' => 3], ['id' => 4]]]],  // replace
+]);
+```
+
+If you need a join table with extra columns (e.g. `assignedAt`), declare
+it as a normal model with two `@relation` fields and a composite `@@id`
+instead — Tehilim's explicit M2M.
+
 ## Composite keys
 
 ```text
@@ -297,16 +350,16 @@ v0.1 — usable for prototyping and small apps. Implemented:
 - where operators + AND/OR/NOT
 - `include` (hasMany / belongsTo / hasOne) + `select`
 - `@@id` / `@@unique` composite keys
+- Implicit many-to-many with auto-created `_AToB` join tables
 - `insertMany` / `updateMany` / `deleteMany` / `upsert`
 - `transaction()` with nested SAVEPOINTs and `Rollback`
 - Opt-in request-scoped cache (auto-flush on writes)
 - File-based migration history (`migrate dev` / `deploy` / `status` / `reset`)
 - SQLite, MySQL/MariaDB, PostgreSQL drivers
 
-Not yet: many-to-many implicit relations, raw SQL escape hatch
-(`$queryRaw` / `$executeRaw`), JSON path queries, full-text search,
-isolation-level control on transactions, schema introspection from an
-existing DB.
+Not yet: raw SQL escape hatch (`$queryRaw` / `$executeRaw`), JSON path
+queries, full-text search, isolation-level control on transactions,
+schema introspection from an existing DB.
 
 ## License
 

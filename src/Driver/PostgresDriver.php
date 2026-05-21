@@ -13,6 +13,16 @@ final class PostgresDriver extends AbstractPdoDriver
         return '"' . str_replace('"', '""', $name) . '"';
     }
 
+    public function listTables(): array
+    {
+        $stmt = $this->pdoInstance->prepare(
+            "SELECT tablename FROM pg_tables WHERE schemaname = ANY (current_schemas(false))"
+        );
+        $stmt->execute();
+        $rows = $stmt->fetchAll(\PDO::FETCH_COLUMN);
+        return array_map(strval(...), $rows);
+    }
+
     public function multiInsertSql(string $table, array $columns, int $rowCount, bool $skipDuplicates): string
     {
         $sql = parent::multiInsertSql($table, $columns, $rowCount, $skipDuplicates);

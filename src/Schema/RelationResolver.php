@@ -26,9 +26,7 @@ final class RelationResolver
 
         $rel = $field->attribute('relation');
         if ($rel !== null) {
-            /** @var list<string> $fields */
             $fields = $this->stringList($rel->args['fields'] ?? []);
-            /** @var list<string> $references */
             $references = $this->stringList($rel->args['references'] ?? []);
             if ($fields === [] || $references === []) {
                 throw new ParseException("@relation on {$model->name}.{$field->name} requires 'fields' and 'references'");
@@ -43,7 +41,7 @@ final class RelationResolver
 
         $inverse = array_find(
             $target->relationFields(),
-            static fn (\Polidog\Tehilim\Schema\Ast\Field $tf): bool =>
+            static fn (Field $tf): bool =>
                 $tf->type->name === $model->name && $tf->attribute('relation') !== null,
         );
         if ($inverse !== null) {
@@ -61,13 +59,53 @@ final class RelationResolver
             }
         }
 
+        if ($field->list) {
+            $m2mBack = array_find(
+                $target->relationFields(),
+                static fn (Field $tf): bool =>
+                    $tf->type->name === $model->name
+                    && $tf->list
+                    && $tf->attribute('relation') === null,
+            );
+            if ($m2mBack !== null) {
+                return $this->buildManyToMany($model, $target);
+            }
+        }
+
         throw new ParseException(
             "Relation '{$model->name}.{$field->name}' has no @relation here and no inverse @relation on {$target->name}"
         );
     }
 
+    private function buildManyToMany(Model $model, Model $target): Relation
+    {
+        $localPk = $model->primaryKey();
+        $foreignPk = $target->primaryKey();
+        if ($localPk === null || $foreignPk === null) {
+            throw new ParseException(
+                "Implicit M2M between {$model->name} and {$target->name} requires a single-column @id on each side"
+            );
+        }
+
+        [$first, $second] = $model->name < $target->name
+            ? [$model->name, $target->name]
+            : [$target->name, $model->name];
+
+        $joinTable = "_{$first}To{$second}";
+        $isFirst = $model->name === $first;
+
+        return new Relation(
+            kind: Relation::MANY_TO_MANY,
+            target: $target->name,
+            localFields: [$localPk->columnName()],
+            foreignFields: [$foreignPk->columnName()],
+            joinTable: $joinTable,
+            joinLocalColumn: $isFirst ? 'A' : 'B',
+            joinForeignColumn: $isFirst ? 'B' : 'A',
+        );
+    }
+
     /**
-     * @param mixed $value
      * @return list<string>
      */
     private function stringList(mixed $value): array
@@ -75,12 +113,6 @@ final class RelationResolver
         if (!is_array($value)) {
             return [];
         }
-        $out = [];
-        foreach ($value as $v) {
-            if (is_string($v)) {
-                $out[] = $v;
-            }
-        }
-        return $out;
+        return array_values(array_filter($value, is_string(...)));
     }
 }

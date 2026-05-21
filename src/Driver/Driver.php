@@ -29,6 +29,14 @@ interface Driver
 
     public function dropTableIfExistsSql(string $table): string;
 
+    /**
+     * List user tables currently present in the database (excluding system
+     * tables). Used by destructive `push` to clean up between schemas.
+     *
+     * @return list<string>
+     */
+    public function listTables(): array;
+
     public function addColumnSql(string $table, ColumnDef $col): string;
 
     public function dropColumnSql(string $table, string $col): string;

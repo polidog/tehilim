@@ -4,13 +4,18 @@ declare(strict_types=1);
 
 namespace Polidog\Tehilim\Migration;
 
+use Polidog\Tehilim\Client\Relation;
 use Polidog\Tehilim\Schema\Ast\Field;
 use Polidog\Tehilim\Schema\Ast\Invocation;
 use Polidog\Tehilim\Schema\Ast\Model;
 use Polidog\Tehilim\Schema\Ast\Schema;
+use Polidog\Tehilim\Schema\RelationResolver;
 
 /**
  * Translates Schema AST models into TableDef structs used by drivers + diff.
+ *
+ * Also synthesizes join tables for implicit many-to-many relations
+ * (`_AToB` shape).
  */
 final class TableBuilder
 {
@@ -20,6 +25,9 @@ final class TableBuilder
         $out = [];
         foreach ($schema->models as $model) {
             $out[] = self::fromModel($model);
+        }
+        foreach (self::joinTables($schema) as $jt) {
+            $out[] = $jt;
         }
         return $out;
     }
@@ -53,6 +61,58 @@ final class TableBuilder
             compositePrimaryKey: $model->compositePrimaryKey(),
             compositeUniqueGroups: $model->compositeUniqueGroups(),
         );
+    }
+
+    /** @return list<TableDef> */
+    public static function joinTables(Schema $schema): array
+    {
+        $resolver = new RelationResolver($schema);
+        $seen = [];
+        $out = [];
+        foreach ($schema->models as $model) {
+            foreach ($model->relationFields() as $field) {
+                try {
+                    $rel = $resolver->resolve($model, $field);
+                } catch (\Throwable) {
+                    continue;
+                }
+                if (!$rel->isManyToMany() || $rel->joinTable === null) {
+                    continue;
+                }
+                if (isset($seen[$rel->joinTable])) {
+                    continue;
+                }
+                $seen[$rel->joinTable] = true;
+
+                $target = $schema->model($rel->target);
+                if ($target === null) {
+                    continue;
+                }
+
+                [$firstModel, $secondModel] = $model->name < $target->name
+                    ? [$model, $target]
+                    : [$target, $model];
+
+                $aPk = $firstModel->primaryKey();
+                $bPk = $secondModel->primaryKey();
+                if ($aPk === null || $bPk === null) {
+                    continue;
+                }
+
+                $out[] = new TableDef(
+                    name: $rel->joinTable,
+                    columns: [
+                        new ColumnDef('A', self::phpType($aPk), nullable: false),
+                        new ColumnDef('B', self::phpType($bPk), nullable: false),
+                    ],
+                    primaryKey: null,
+                    uniqueColumns: [],
+                    compositePrimaryKey: ['A', 'B'],
+                    compositeUniqueGroups: [],
+                );
+            }
+        }
+        return $out;
     }
 
     public static function phpType(Field $field): string

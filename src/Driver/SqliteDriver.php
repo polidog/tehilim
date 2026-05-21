@@ -18,6 +18,16 @@ final class SqliteDriver extends AbstractPdoDriver
         return true;
     }
 
+    public function listTables(): array
+    {
+        $stmt = $this->pdoInstance->prepare(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"
+        );
+        $stmt->execute();
+        $rows = $stmt->fetchAll(\PDO::FETCH_COLUMN);
+        return array_map(strval(...), $rows);
+    }
+
     public function multiInsertSql(string $table, array $columns, int $rowCount, bool $skipDuplicates): string
     {
         $sql = parent::multiInsertSql($table, $columns, $rowCount, $skipDuplicates);

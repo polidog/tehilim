@@ -23,13 +23,13 @@ final class SchemaSync
     public function push(bool $drop = true): void
     {
         $tables = TableBuilder::fromSchema($this->schema);
-
         $pdo = $this->driver->pdo();
+
         $pdo->beginTransaction();
         try {
             if ($drop) {
-                foreach (array_reverse($tables) as $t) {
-                    $this->runDdl($pdo, $this->driver->dropTableIfExistsSql($t->name));
+                foreach ($this->driver->listTables() as $existing) {
+                    $this->runDdl($pdo, $this->driver->dropTableIfExistsSql($existing));
                 }
             }
             foreach ($tables as $t) {

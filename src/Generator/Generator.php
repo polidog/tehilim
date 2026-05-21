@@ -115,8 +115,8 @@ PHP;
 
         $imports = $this->renderTypeImports($relations);
         $rowShape = $this->rowShape($model, $relations);
-        $insertShape = $this->insertInputShape($model);
-        $updateShape = $this->updateInputShape($model);
+        $insertShape = $this->insertInputShape($model, $relations);
+        $updateShape = $this->updateInputShape($model, $relations);
         $whereUniqueShape = $this->whereUniqueShape($model);
         $includeShape = $this->includeShape($name, $relations);
         $selectShape = $this->selectShape($model, $relations);
@@ -318,6 +318,7 @@ PHP;
             $seen[$target] = true;
             $fqcn = $this->namespace . '\\Model\\' . $target . 'Client';
             $lines .= " * @phpstan-import-type {$target}Row from \\{$fqcn}\n";
+            $lines .= " * @phpstan-import-type {$target}WhereUnique from \\{$fqcn}\n";
         }
         return $lines;
     }
@@ -340,7 +341,10 @@ PHP;
         return 'array{' . implode(', ', $parts) . '}';
     }
 
-    private function insertInputShape(Model $model): string
+    /**
+     * @param array<string, array{relation:Relation, field:Field}> $relations
+     */
+    private function insertInputShape(Model $model, array $relations): string
     {
         $parts = [];
         foreach ($model->scalarFields() as $f) {
@@ -348,14 +352,31 @@ PHP;
             $key = $f->columnName() . ($optional ? '?' : '');
             $parts[] = $key . ': ' . TypeFormatter::phpType($f);
         }
+        foreach ($relations as $name => $info) {
+            if (!$info['relation']->isManyToMany()) {
+                continue;
+            }
+            $unique = $info['relation']->target . 'WhereUnique';
+            $parts[] = "{$name}?: array{connect?: list<{$unique}>}";
+        }
         return 'array{' . implode(', ', $parts) . '}';
     }
 
-    private function updateInputShape(Model $model): string
+    /**
+     * @param array<string, array{relation:Relation, field:Field}> $relations
+     */
+    private function updateInputShape(Model $model, array $relations): string
     {
         $parts = [];
         foreach ($model->scalarFields() as $f) {
             $parts[] = $f->columnName() . '?: ' . TypeFormatter::phpType($f);
+        }
+        foreach ($relations as $name => $info) {
+            if (!$info['relation']->isManyToMany()) {
+                continue;
+            }
+            $unique = $info['relation']->target . 'WhereUnique';
+            $parts[] = "{$name}?: array{connect?: list<{$unique}>, disconnect?: list<{$unique}>, set?: list<{$unique}>}";
         }
         return 'array{' . implode(', ', $parts) . '}';
     }
@@ -442,14 +463,28 @@ PHP;
             $r = $info['relation'];
             $local = $this->phpArrayList($r->localFields);
             $foreign = $this->phpArrayList($r->foreignFields);
-            $entries[] = sprintf(
-                "            '%s' => new Relation('%s', '%s', %s, %s),",
-                $name,
-                $r->kind,
-                $r->target,
-                $local,
-                $foreign,
-            );
+            if ($r->isManyToMany()) {
+                $entries[] = sprintf(
+                    "            '%s' => new Relation('%s', '%s', %s, %s, %s, %s, %s),",
+                    $name,
+                    $r->kind,
+                    $r->target,
+                    $local,
+                    $foreign,
+                    var_export($r->joinTable, true),
+                    var_export($r->joinLocalColumn, true),
+                    var_export($r->joinForeignColumn, true),
+                );
+            } else {
+                $entries[] = sprintf(
+                    "            '%s' => new Relation('%s', '%s', %s, %s),",
+                    $name,
+                    $r->kind,
+                    $r->target,
+                    $local,
+                    $foreign,
+                );
+            }
         }
         $body = implode("\n", $entries);
 
