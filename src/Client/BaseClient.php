@@ -14,8 +14,32 @@ abstract class BaseClient
 
     private ?RequestCache $cache = null;
 
+    /** @var (\Closure(string, string, callable(): mixed): mixed)|null */
+    private ?\Closure $profiler = null;
+
     public function __construct(public readonly Driver $driver)
     {
+    }
+
+    /**
+     * Register a profiler hook. The callable is invoked around every
+     * Tehilim operation with `($collector, $label, $fn)` and must return
+     * whatever $fn returns. Matches Relayer's Profiler::measure() shape:
+     *
+     *   $db->withProfiler($relayer->profiler->measure(...));
+     *
+     * Pass null to clear.
+     */
+    public function withProfiler(?callable $profiler): static
+    {
+        $this->profiler = $profiler === null ? null : \Closure::fromCallable($profiler);
+        return $this;
+    }
+
+    /** @return (\Closure(string, string, callable(): mixed): mixed)|null */
+    public function profiler(): ?\Closure
+    {
+        return $this->profiler;
     }
 
     /**

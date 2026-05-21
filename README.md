@@ -349,6 +349,48 @@ $db->transaction(function ($tx) {
 The closure parameter is typed as the concrete generated client, so
 `$tx->user`, `$tx->post`, etc. are fully autocompleted and PHPStan-checked.
 
+## Profiler hook
+
+Tehilim wraps each operation with an optional callable that has the same
+shape as Relayer's `Profiler::measure(string $collector, string $label,
+callable $fn): mixed`, so a Relayer profiler plugs in directly:
+
+```php
+// Relayer integration — pass measure() as a first-class callable
+$db = TehilimClient::fromPdo($pdo)
+    ->withProfiler($relayer->profiler->measure(...));
+```
+
+Custom profilers are anything callable with that signature:
+
+```php
+$db->withProfiler(function (string $collector, string $label, callable $fn) {
+    $start = hrtime(true);
+    try {
+        return $fn();
+    } finally {
+        error_log(sprintf('[%s/%s] %.2fms', $collector, $label, (hrtime(true) - $start) / 1e6));
+    }
+});
+
+$db->withProfiler(null);  // clear
+```
+
+### Events emitted
+
+| API call | collector | label |
+|---|---|---|
+| `findUnique` / `findFirst` / `findMany` | `tehilim.findUnique` etc. | `<Model>` |
+| `insert` / `update` / `delete` / `count` | `tehilim.insert` etc. | `<Model>` |
+| `upsert` / `insertMany` / `updateMany` / `deleteMany` | `tehilim.upsert` etc. | `<Model>` |
+
+- `include` lookups recurse through the same hook, so M2M / hasMany
+  loads nest naturally underneath their parent `findMany`.
+- `upsert` nests over its internal `findFirst` + `insert` / `update`.
+- Cache hits **skip** the profiler — only real database work is timed.
+- Zero overhead when no profiler is registered (a single nullable
+  property check).
+
 ## PHPStan extension
 
 Tehilim ships a PHPStan extension at the package root (`extension.neon`)
