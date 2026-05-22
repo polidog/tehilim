@@ -186,7 +186,16 @@ final class WhereCompiler
         if (!is_array($rawPath) || !array_is_list($rawPath)) {
             throw new InvalidArgumentException("JSON 'path' must be a list of keys");
         }
-        $path = array_map(strval(...), $rawPath);
+        $path = [];
+        foreach ($rawPath as $seg) {
+            // Segments are embedded into the SQL path literal, so reject
+            // anything that isn't a plain key — an array/object would stringify
+            // to "Array"/garbage and land in the query.
+            if (!is_string($seg) && !is_int($seg)) {
+                throw new InvalidArgumentException("JSON 'path' segments must be string or int");
+            }
+            $path[] = (string) $seg;
+        }
 
         $clauses = [];
         $textExpr = null;
