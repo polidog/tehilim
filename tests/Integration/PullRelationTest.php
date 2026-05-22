@@ -110,6 +110,27 @@ final class PullRelationTest extends TestCase
         self::assertNotNull($this->relationField($membership, 'Team', list: false));
     }
 
+    public function testJoinTableNotFoldedWhenSideLacksSingleColumnPk(): void
+    {
+        // _PostToTag is shaped like an implicit M2M, but Tag has a composite PK,
+        // which runtime M2M resolution can't handle — so it must NOT be folded
+        // and Tag/_PostToTag stay as explicit models.
+        $pdo = $this->pdo([
+            'CREATE TABLE "Post" ("id" INTEGER PRIMARY KEY AUTOINCREMENT)',
+            'CREATE TABLE "Tag" ("k1" INTEGER NOT NULL, "k2" INTEGER NOT NULL, PRIMARY KEY ("k1", "k2"))',
+            'CREATE TABLE "_PostToTag" ("A" INTEGER NOT NULL REFERENCES "Post"("id"), "B" INTEGER NOT NULL REFERENCES "Tag"("k1"), PRIMARY KEY ("A", "B"))',
+        ]);
+
+        $schema = (new Introspector(new SqliteDriver($pdo)))->introspect();
+
+        $names = array_map(static fn ($m) => $m->name, $schema->models);
+        self::assertContains('_PostToTag', $names, 'unfoldable join table must stay a model');
+
+        // Post should NOT have a folded M2M list to Tag.
+        $post = $this->model($schema, 'Post');
+        self::assertNull($this->relationField($post, 'Tag', list: true));
+    }
+
     public function testMultipleForeignKeysToSameModelSkipInverse(): void
     {
         // Post has two FKs to User (authorId, editorId). Both become belongsTo,

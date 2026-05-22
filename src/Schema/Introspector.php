@@ -136,15 +136,49 @@ final class Introspector
             foreach ($it->foreignKeys as $fk) {
                 $refByColumn[$fk->column] = $fk->referencedTable;
             }
-            $a = $refByColumn['A'] ?? null;
-            $b = $refByColumn['B'] ?? null;
-            if ($a === null || $b === null) {
+            $refA = $refByColumn['A'] ?? null;
+            $refB = $refByColumn['B'] ?? null;
+            if ($refA === null || $refB === null) {
                 continue;
             }
-            $out[$name] = [$a, $b];
+
+            // RelationResolver derives the name as `_{first}To{second}` with
+            // first/second the lexicographically-sorted model names, and binds
+            // A->first, B->second. Fold only when the live table matches that
+            // exactly, otherwise the emitted M2M would query the wrong/missing
+            // join table.
+            [$first, $second] = $refA < $refB ? [$refA, $refB] : [$refB, $refA];
+            if ($name !== "_{$first}To{$second}" || $refA !== $first || $refB !== $second) {
+                continue;
+            }
+
+            // Runtime M2M also requires a single-column PK on both sides
+            // (buildManyToMany throws otherwise). If either side lacks one, keep
+            // the join table as an explicit model instead of folding.
+            if (!$this->hasSingleColumnPk($intro[$refA] ?? null)
+                || !$this->hasSingleColumnPk($intro[$refB] ?? null)) {
+                continue;
+            }
+
+            $out[$name] = [$refA, $refB];
         }
 
         return $out;
+    }
+
+    private function hasSingleColumnPk(?IntrospectedTable $table): bool
+    {
+        if ($table === null || $table->compositePrimaryKey !== null) {
+            return false;
+        }
+        $pkCount = 0;
+        foreach ($table->columns as $col) {
+            if ($col->primaryKey) {
+                ++$pkCount;
+            }
+        }
+
+        return $pkCount === 1;
     }
 
     /**
