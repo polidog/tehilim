@@ -7,6 +7,8 @@ namespace Polidog\Tehilim\Driver;
 use PDO;
 use Polidog\Tehilim\Client\IsolationLevel;
 use Polidog\Tehilim\Migration\ColumnDef;
+use Polidog\Tehilim\Schema\IntrospectedColumn;
+use Polidog\Tehilim\Schema\IntrospectedTable;
 use RuntimeException;
 
 final class SqliteDriver extends AbstractPdoDriver
@@ -75,6 +77,63 @@ final class SqliteDriver extends AbstractPdoDriver
         return array_map(strval(...), $rows);
     }
 
+    public function introspectTable(string $table): IntrospectedTable
+    {
+        $info = $this->pdoInstance->prepare(
+            'SELECT name, type, "notnull", pk FROM pragma_table_info(?)',
+        );
+        $info->execute([$table]);
+
+        /** @var list<array{name:string,type:string,notnull:int|string,pk:int|string}> $rows */
+        $rows = $info->fetchAll();
+
+        $uniqueSingle = [];
+        $compositeUniques = [];
+        foreach ($this->uniqueIndexGroups($table) as $cols) {
+            if (count($cols) === 1) {
+                $uniqueSingle[$cols[0]] = true;
+            } else {
+                $compositeUniques[] = $cols;
+            }
+        }
+
+        // Resolve the primary key columns first (ordered by their pk position),
+        // so we know whether it's single or composite before building columns.
+        $pkOrder = [];
+        foreach ($rows as $r) {
+            if ((int) $r['pk'] > 0) {
+                $pkOrder[(int) $r['pk']] = $r['name'];
+            }
+        }
+        ksort($pkOrder);
+        $pkCols = array_values($pkOrder);
+        $singlePk = count($pkCols) === 1 ? $pkCols[0] : null;
+
+        $columns = [];
+        foreach ($rows as $r) {
+            $isSinglePk = $r['name'] === $singlePk;
+            $type = $this->tehilimType($r['type']);
+            $columns[] = new IntrospectedColumn(
+                name: $r['name'],
+                tehilimType: $type,
+                nullable: (int) $r['notnull'] === 0 && (int) $r['pk'] === 0,
+                // A single-column INTEGER PK is a rowid alias in SQLite: it
+                // auto-generates on NULL/omitted insert, with or without the
+                // AUTOINCREMENT keyword. Treat it as @default(autoincrement()).
+                autoIncrement: $isSinglePk && $type === 'Int',
+                primaryKey: $isSinglePk,
+                unique: isset($uniqueSingle[$r['name']]),
+            );
+        }
+
+        return new IntrospectedTable(
+            $table,
+            $columns,
+            count($pkCols) >= 2 ? $pkCols : null,
+            $compositeUniques,
+        );
+    }
+
     public function multiInsertSql(string $table, array $columns, int $rowCount, bool $skipDuplicates): string
     {
         $sql = parent::multiInsertSql($table, $columns, $rowCount, $skipDuplicates);
@@ -122,6 +181,56 @@ final class SqliteDriver extends AbstractPdoDriver
             'bytes' => 'BLOB',
             default => 'TEXT',
         };
+    }
+
+    /**
+     * Map a SQLite declared type back to a schema type. SQLite's type affinity
+     * is lossy: it only distinguishes INTEGER/REAL/TEXT/BLOB, so DateTime, Json,
+     * Boolean and BigInt all collapse into Int/String here.
+     */
+    private function tehilimType(string $declared): string
+    {
+        $t = strtoupper($declared);
+
+        return match (true) {
+            str_contains($t, 'INT') => 'Int',
+            str_contains($t, 'REAL'), str_contains($t, 'FLOA'), str_contains($t, 'DOUB') => 'Float',
+            str_contains($t, 'BLOB') => 'Bytes',
+            default => 'String',
+        };
+    }
+
+    /**
+     * Unique column groups (excluding the PK index) as lists of column names.
+     *
+     * @return list<list<string>>
+     */
+    private function uniqueIndexGroups(string $table): array
+    {
+        $list = $this->pdoInstance->prepare(
+            'SELECT name, "unique", origin FROM pragma_index_list(?)',
+        );
+        $list->execute([$table]);
+
+        /** @var list<array{name:string,unique:int|string,origin:string}> $indexes */
+        $indexes = $list->fetchAll();
+
+        $groups = [];
+        foreach ($indexes as $idx) {
+            if ((int) $idx['unique'] !== 1 || $idx['origin'] === 'pk') {
+                continue;
+            }
+            $cols = $this->pdoInstance->prepare('SELECT name FROM pragma_index_info(?)');
+            $cols->execute([$idx['name']]);
+
+            /** @var list<string> $names */
+            $names = array_map(strval(...), $cols->fetchAll(PDO::FETCH_COLUMN));
+            if ($names !== []) {
+                $groups[] = $names;
+            }
+        }
+
+        return $groups;
     }
 
     private function defaultLiteral(ColumnDef $col): string

@@ -76,11 +76,34 @@ vendor/bin/tehilim migrate reset        # drop everything and re-apply (DEV ONLY
 
 # Prototyping shortcut — drop+recreate everything, no history:
 vendor/bin/tehilim push
+
+# Reverse direction — introspect an existing database into a schema:
+vendor/bin/tehilim pull              # overwrite schema.tehilim from the DB
+vendor/bin/tehilim pull --print      # print to stdout instead
 ```
 
 Migrations live under `./migrations/<YYYYmmddHHMMSSvvv>_<slug>/migration.sql`
 with a `_snapshot.tehilim` alongside; applied migrations are recorded in
 the `_tehilim_migrations` table.
+
+### Introspection (`db pull`)
+
+`tehilim pull` reads a live database and reconstructs a schema from it. The
+`datasource` / `generator` blocks of an existing schema file are preserved;
+only the models are regenerated. It connects via the schema's datasource (or
+`--url <dsn>`) and recovers column types, nullability, primary keys (single +
+composite `@@id`), uniques (single + composite `@@unique`), and
+auto-increment.
+
+Caveats:
+
+- **Relations are not inferred yet.** Foreign keys aren't turned into
+  `@relation`, and implicit many-to-many join tables surface as plain models.
+  (Planned for a follow-up.)
+- **SQLite is lossy.** Its type affinity only distinguishes
+  INTEGER/REAL/TEXT/BLOB, so `DateTime`, `Json`, `Boolean`, and `BigInt`
+  columns come back as `Int`/`String`. MySQL and PostgreSQL carry enough type
+  information to recover these faithfully.
 
 ## Connecting
 
@@ -572,9 +595,10 @@ v0.1 — usable for prototyping and small apps. Implemented:
 - `transaction()` with nested SAVEPOINTs and `Rollback`
 - Opt-in request-scoped cache (auto-flush on writes)
 - File-based migration history (`migrate dev` / `deploy` / `status` / `reset`)
+- Database introspection (`pull`) — tables, types, keys, uniques (no relations yet)
 - SQLite, MySQL/MariaDB, PostgreSQL drivers
 
-Not yet: full-text search, schema introspection from an existing DB. For raw
+Not yet: full-text search; relation/FK inference during `db pull`. For raw
 SQL, drop down to PDO via `$client->driver->pdo()` (or
 `TehilimClient::fromPdo()`).
 

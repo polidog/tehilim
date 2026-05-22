@@ -7,6 +7,7 @@ namespace Polidog\Tehilim\Cli;
 use Polidog\Tehilim\Cli\Command\GenerateCommand;
 use Polidog\Tehilim\Cli\Command\InitCommand;
 use Polidog\Tehilim\Cli\Command\MigrateCommand;
+use Polidog\Tehilim\Cli\Command\PullCommand;
 use Polidog\Tehilim\Cli\Command\PushCommand;
 use Throwable;
 
@@ -23,6 +24,7 @@ final class Application
                 'init' => (new InitCommand())->run($args),
                 'generate', 'gen' => (new GenerateCommand())->run($args),
                 'push' => (new PushCommand())->run($args),
+                'pull' => (new PullCommand())->run($args),
                 'migrate' => (new MigrateCommand())->run($args),
                 'help', '-h', '--help' => $this->help(),
                 default => $this->unknown($cmd),
@@ -43,6 +45,7 @@ Usage:
   tehilim init [--schema <path>]            Create a starter tehilim/schema.tehilim
   tehilim generate [--schema <path>]        Generate typed client from schema
   tehilim push [--schema <path>]            Sync schema to DB destructively (prototyping)
+  tehilim pull [--schema <path>] [--print]  Introspect an existing DB into a schema
   tehilim migrate dev    --name <slug>      Diff schema, write a migration, apply it
   tehilim migrate deploy                    Apply unapplied migrations
   tehilim migrate status                    Show applied / pending migrations
