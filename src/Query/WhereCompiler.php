@@ -15,6 +15,11 @@ use Polidog\Tehilim\Driver\Driver;
  *   ['lt'|'lte'|'gt'|'gte' => v], ['contains' => 'x'],
  *   ['startsWith' => 'x'], ['endsWith' => 'x']
  *
+ * JSON path filters (when the field value carries a 'path' key):
+ *   ['path' => ['a','b'], 'equals' => v], ['not' => v],
+ *   ['string_contains'|'string_starts_with'|'string_ends_with' => 'x'],
+ *   ['array_contains' => v]
+ *
  * Top-level operators: AND, OR, NOT.
  *
  * Scalar field values are short-hand for ['equals' => value].
@@ -90,6 +95,10 @@ final class WhereCompiler
             return "{$col} = ?";
         }
 
+        if (array_key_exists('path', $value)) {
+            return $this->compileJsonPath($col, $value, $driver, $params);
+        }
+
         $clauses = [];
         foreach ($value as $op => $v) {
             switch ($op) {
@@ -161,6 +170,101 @@ final class WhereCompiler
         }
 
         return '(' . implode(' AND ', $clauses) . ')';
+    }
+
+    /**
+     * Compile a JSON path filter. $col is already quoted. The value carries a
+     * 'path' (list of keys) plus one or more operators applied to the value at
+     * that path. Comparisons run against the extracted value as text.
+     *
+     * @param array<string,mixed> $value
+     * @param list<mixed>         $params
+     */
+    private function compileJsonPath(string $col, array $value, Driver $driver, array &$params): string
+    {
+        $rawPath = $value['path'];
+        if (!is_array($rawPath) || !array_is_list($rawPath)) {
+            throw new InvalidArgumentException("JSON 'path' must be a list of keys");
+        }
+        $path = array_map(strval(...), $rawPath);
+
+        $clauses = [];
+        $textExpr = null;
+        foreach ($value as $op => $v) {
+            if ($op === 'path') {
+                continue;
+            }
+
+            switch ($op) {
+                case 'equals':
+                    if ($v === null) {
+                        $clauses[] = ($textExpr ??= $driver->jsonExtractText($col, $path)) . ' IS NULL';
+                    } else {
+                        $params[] = $this->jsonScalar($v);
+                        $clauses[] = ($textExpr ??= $driver->jsonExtractText($col, $path)) . ' = ?';
+                    }
+
+                    break;
+
+                case 'not':
+                    if ($v === null) {
+                        $clauses[] = ($textExpr ??= $driver->jsonExtractText($col, $path)) . ' IS NOT NULL';
+                    } else {
+                        $params[] = $this->jsonScalar($v);
+                        $clauses[] = ($textExpr ??= $driver->jsonExtractText($col, $path)) . ' <> ?';
+                    }
+
+                    break;
+
+                case 'string_contains':
+                    $params[] = '%' . $this->escapeLike((string) $v) . '%';
+                    $clauses[] = ($textExpr ??= $driver->jsonExtractText($col, $path)) . ' LIKE ?';
+
+                    break;
+
+                case 'string_starts_with':
+                    $params[] = $this->escapeLike((string) $v) . '%';
+                    $clauses[] = ($textExpr ??= $driver->jsonExtractText($col, $path)) . ' LIKE ?';
+
+                    break;
+
+                case 'string_ends_with':
+                    $params[] = '%' . $this->escapeLike((string) $v);
+                    $clauses[] = ($textExpr ??= $driver->jsonExtractText($col, $path)) . ' LIKE ?';
+
+                    break;
+
+                case 'array_contains':
+                    [$sql, $bind] = $driver->jsonContains($col, $path, $v);
+                    $params[] = $bind;
+                    $clauses[] = $sql;
+
+                    break;
+
+                default:
+                    throw new InvalidArgumentException("Unknown JSON path operator '{$op}'");
+            }
+        }
+
+        if ($clauses === []) {
+            throw new InvalidArgumentException("JSON 'path' filter requires at least one operator");
+        }
+
+        return '(' . implode(' AND ', $clauses) . ')';
+    }
+
+    /**
+     * Normalize a scalar for text comparison against an extracted JSON value.
+     * Booleans become the JSON literals true/false; everything else is cast to
+     * string so PostgreSQL's text extraction compares cleanly.
+     */
+    private function jsonScalar(mixed $v): string
+    {
+        if (is_bool($v)) {
+            return $v ? 'true' : 'false';
+        }
+
+        return (string) $v;
     }
 
     private function escapeLike(string $s): string

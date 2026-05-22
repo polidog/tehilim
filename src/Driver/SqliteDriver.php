@@ -30,6 +30,26 @@ final class SqliteDriver extends AbstractPdoDriver
         $this->pdoInstance->beginTransaction();
     }
 
+    public function jsonExtractText(string $quotedColumn, array $path): string
+    {
+        return sprintf(
+            'json_extract(%s, %s)',
+            $quotedColumn,
+            $this->quotePathLiteral($this->jsonPathDollar($path)),
+        );
+    }
+
+    public function jsonContains(string $quotedColumn, array $path, mixed $value): array
+    {
+        $sql = sprintf(
+            'EXISTS (SELECT 1 FROM json_each(%s, %s) WHERE value = ?)',
+            $quotedColumn,
+            $this->quotePathLiteral($this->jsonPathDollar($path)),
+        );
+
+        return [$sql, $value];
+    }
+
     public function listTables(): array
     {
         $stmt = $this->pdoInstance->prepare(

@@ -198,6 +198,31 @@ abstract class AbstractPdoDriver implements Driver
     }
 
     /**
+     * Build a MySQL/SQLite-style JSON path string (`$."a"."b"`) from a key
+     * list. Each segment is wrapped in double quotes so arbitrary keys stay
+     * valid path syntax, with embedded `"`/`\` escaped.
+     *
+     * @param list<string> $path
+     */
+    protected function jsonPathDollar(array $path): string
+    {
+        $s = '$';
+        foreach ($path as $seg) {
+            $s .= '."' . str_replace(['\\', '"'], ['\\\\', '\"'], $seg) . '"';
+        }
+
+        return $s;
+    }
+
+    /**
+     * Wrap an already-built path string as a single-quoted SQL string literal.
+     */
+    protected function quotePathLiteral(string $path): string
+    {
+        return "'" . str_replace("'", "''", $path) . "'";
+    }
+
+    /**
      * @param list<string> $columns
      *
      * @return array<string,mixed>

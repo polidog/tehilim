@@ -25,6 +25,26 @@ final class MySqlDriver extends AbstractPdoDriver
         $this->pdoInstance->beginTransaction();
     }
 
+    public function jsonExtractText(string $quotedColumn, array $path): string
+    {
+        return sprintf(
+            'JSON_UNQUOTE(JSON_EXTRACT(%s, %s))',
+            $quotedColumn,
+            $this->quotePathLiteral($this->jsonPathDollar($path)),
+        );
+    }
+
+    public function jsonContains(string $quotedColumn, array $path, mixed $value): array
+    {
+        $sql = sprintf(
+            'JSON_CONTAINS(%s, ?, %s)',
+            $quotedColumn,
+            $this->quotePathLiteral($this->jsonPathDollar($path)),
+        );
+
+        return [$sql, json_encode($value)];
+    }
+
     public function listTables(): array
     {
         $stmt = $this->pdoInstance->prepare(

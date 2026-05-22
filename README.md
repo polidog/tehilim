@@ -138,6 +138,34 @@ $db->post->findMany([
 ]);
 ```
 
+### JSON path queries
+
+`Json` columns can be filtered by their contents using a `path` (a list of
+keys) plus an operator: `equals`, `not`, `string_contains`,
+`string_starts_with`, `string_ends_with`, `array_contains`. Comparisons run
+against the extracted value as text.
+
+```php
+// profile is a Json column like {"address": {"city": "Tokyo"}, "tags": ["php", "sql"]}
+$db->doc->findMany(['where' => [
+    'profile' => ['path' => ['address', 'city'], 'equals' => 'Tokyo'],
+]]);
+
+$db->doc->findMany(['where' => [
+    'profile' => ['path' => ['address', 'city'], 'string_contains' => 'oky'],
+]]);
+
+// does the nested array contain a value?
+$db->doc->findMany(['where' => [
+    'profile' => ['path' => ['tags'], 'array_contains' => 'php'],
+]]);
+```
+
+`path` is always an array of keys (the driver translates it per dialect:
+PostgreSQL `#>>`/`#>`, MySQL `JSON_EXTRACT`/`JSON_CONTAINS`, SQLite
+`json_extract`/`json_each`). **SQLite is supported too** via JSON1 (Prisma
+does not support SQLite here).
+
 ## Relations: `include` and `select`
 
 Relations declared in the schema become optional keys on each row. Ask for
@@ -536,6 +564,7 @@ v0.1 — usable for prototyping and small apps. Implemented:
 
 - Single-row CRUD with array-shape PHPDoc types
 - where operators + AND/OR/NOT
+- JSON path filters on `Json` columns (`path` + `equals` / `string_contains` / `array_contains` / …)
 - `include` (hasMany / belongsTo / hasOne) + `select`
 - `@@id` / `@@unique` composite keys
 - Implicit many-to-many with auto-created `_AToB` join tables
@@ -545,8 +574,8 @@ v0.1 — usable for prototyping and small apps. Implemented:
 - File-based migration history (`migrate dev` / `deploy` / `status` / `reset`)
 - SQLite, MySQL/MariaDB, PostgreSQL drivers
 
-Not yet: JSON path queries, full-text search, schema introspection from an
-existing DB. For raw SQL, drop down to PDO via `$client->driver->pdo()` (or
+Not yet: full-text search, schema introspection from an existing DB. For raw
+SQL, drop down to PDO via `$client->driver->pdo()` (or
 `TehilimClient::fromPdo()`).
 
 ## License

@@ -37,6 +37,30 @@ interface Driver
     public function quoteIdent(string $name): string;
 
     /**
+     * SQL expression that extracts the value at $path from a JSON column as
+     * text, for use in comparisons (`= ?`, `LIKE ?`, etc).
+     *
+     * $quotedColumn must already be quoted via {@see quoteIdent()}. $path keys
+     * are embedded directly into the SQL (a JSON path cannot be bound as a
+     * parameter), so implementations must escape each segment safely.
+     *
+     * @param list<string> $path
+     */
+    public function jsonExtractText(string $quotedColumn, array $path): string;
+
+    /**
+     * Predicate testing whether the JSON array at $path contains $value.
+     * Returns a `[sql, boundValue]` pair: the SQL carries exactly one `?`
+     * placeholder and the caller binds boundValue for it. The bound value is
+     * driver-shaped (JSON-encoded for PostgreSQL/MySQL, raw scalar for SQLite).
+     *
+     * @param list<string> $path
+     *
+     * @return array{0:string,1:mixed}
+     */
+    public function jsonContains(string $quotedColumn, array $path, mixed $value): array;
+
+    /**
      * Insert a row and return the row including any DB-generated values.
      *
      * @param array<string,mixed> $data       column => value
