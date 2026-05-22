@@ -146,8 +146,13 @@ final class SchemaPrinter
         if ($value === null) {
             return 'null';
         }
-        if (is_int($value) || is_float($value)) {
+        if (is_int($value)) {
             return (string) $value;
+        }
+        if (is_float($value)) {
+            // var_export keeps the decimal point on integral floats (1.0 stays
+            // "1.0"), so the value re-parses as a float, not an int.
+            return var_export($value, true);
         }
 
         $str = (string) $value;

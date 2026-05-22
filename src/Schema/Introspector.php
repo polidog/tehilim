@@ -35,8 +35,13 @@ final class Introspector
      */
     public function introspect(?Schema $template = null): Schema
     {
+        // Sort tables so `pull` output is deterministic — drivers don't ORDER BY
+        // listTables(), so ordering would otherwise vary and create noisy diffs.
+        $tables = $this->driver->listTables();
+        sort($tables);
+
         $models = [];
-        foreach ($this->driver->listTables() as $table) {
+        foreach ($tables as $table) {
             if ($table === self::MIGRATIONS_TABLE) {
                 continue;
             }

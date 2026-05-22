@@ -45,6 +45,18 @@ TXT);
         self::assertStringContainsString('@@unique([courseId, userId])', $printed);
     }
 
+    public function testIntegralFloatStaysFloatOnRoundTrip(): void
+    {
+        $schema = Parser::parseString('datasource db { provider = "sqlite" ratio = 1.0 }');
+
+        $printed = (new SchemaPrinter())->print($schema);
+        self::assertStringContainsString('ratio = 1.0', $printed);
+
+        $reparsed = Parser::parseString($printed);
+        self::assertIsFloat($reparsed->datasources[0]->options['ratio']);
+        self::assertSame(1.0, $reparsed->datasources[0]->options['ratio']);
+    }
+
     public function testRoundTripsThroughParser(): void
     {
         $source = <<<'TXT'

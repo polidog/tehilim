@@ -57,6 +57,12 @@ TXT;
 
         $pulled = (new Introspector($driver))->introspect($schema);
 
+        // Models come out sorted by table name for stable, diff-friendly output.
+        self::assertSame(
+            ['Enrollment', 'Membership', 'User'],
+            array_map(static fn ($m) => $m->name, $pulled->models),
+        );
+
         // The User model: types, nullability, PK auto-increment, unique.
         $user = $this->model($pulled, 'User');
         self::assertSame(

@@ -79,8 +79,6 @@ final class SqliteDriver extends AbstractPdoDriver
 
     public function introspectTable(string $table): IntrospectedTable
     {
-        $autoInc = $this->hasAutoIncrement($table);
-
         $info = $this->pdoInstance->prepare(
             'SELECT name, type, "notnull", pk FROM pragma_table_info(?)',
         );
@@ -114,11 +112,15 @@ final class SqliteDriver extends AbstractPdoDriver
         $columns = [];
         foreach ($rows as $r) {
             $isSinglePk = $r['name'] === $singlePk;
+            $type = $this->tehilimType($r['type']);
             $columns[] = new IntrospectedColumn(
                 name: $r['name'],
-                tehilimType: $this->tehilimType($r['type']),
+                tehilimType: $type,
                 nullable: (int) $r['notnull'] === 0 && (int) $r['pk'] === 0,
-                autoIncrement: $isSinglePk && $autoInc,
+                // A single-column INTEGER PK is a rowid alias in SQLite: it
+                // auto-generates on NULL/omitted insert, with or without the
+                // AUTOINCREMENT keyword. Treat it as @default(autoincrement()).
+                autoIncrement: $isSinglePk && $type === 'Int',
                 primaryKey: $isSinglePk,
                 unique: isset($uniqueSingle[$r['name']]),
             );
@@ -196,17 +198,6 @@ final class SqliteDriver extends AbstractPdoDriver
             str_contains($t, 'BLOB') => 'Bytes',
             default => 'String',
         };
-    }
-
-    private function hasAutoIncrement(string $table): bool
-    {
-        $stmt = $this->pdoInstance->prepare(
-            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?",
-        );
-        $stmt->execute([$table]);
-        $sql = $stmt->fetchColumn();
-
-        return is_string($sql) && stripos($sql, 'AUTOINCREMENT') !== false;
     }
 
     /**

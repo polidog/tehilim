@@ -41,4 +41,27 @@ final class Options
 
         return ['schema' => $schema, 'extra' => $extra];
     }
+
+    /**
+     * Resolve a relative SQLite file URL against the schema file's directory so
+     * the CLI works regardless of the current working directory. Absolute
+     * (`sqlite:/...`), special (`sqlite::memory:`), and non-SQLite URLs are
+     * returned unchanged.
+     */
+    public static function resolveSqliteUrl(string $url, string $schemaPath): string
+    {
+        if (!str_starts_with($url, 'sqlite:')) {
+            return $url;
+        }
+        $path = substr($url, strlen('sqlite:'));
+        if ($path === '' || str_starts_with($path, '/') || str_starts_with($path, ':')) {
+            return $url;
+        }
+        $base = dirname(realpath($schemaPath) ?: $schemaPath);
+        // Strip only a single leading "./" — stripping all leading "./" chars
+        // would corrupt "../foo" into "foo", losing the parent directory.
+        $rel = str_starts_with($path, './') ? substr($path, 2) : $path;
+
+        return 'sqlite:' . $base . '/' . $rel;
+    }
 }

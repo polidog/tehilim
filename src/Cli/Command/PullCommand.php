@@ -39,7 +39,7 @@ final class PullCommand
             );
         }
 
-        $resolvedUrl = $this->resolveUrl($url, $schemaPath);
+        $resolvedUrl = Options::resolveSqliteUrl($url, $schemaPath);
         $driver = Drivers::forPdo(Config::pdo($resolvedUrl));
 
         $schema = (new Introspector($driver))->introspect($template);
@@ -69,19 +69,5 @@ final class PullCommand
         $ds = $template->datasources[0] ?? null;
 
         return $ds?->url();
-    }
-
-    private function resolveUrl(string $url, string $schemaPath): string
-    {
-        if (!str_starts_with($url, 'sqlite:')) {
-            return $url;
-        }
-        $path = substr($url, strlen('sqlite:'));
-        if ($path === '' || str_starts_with($path, '/') || str_starts_with($path, ':')) {
-            return $url;
-        }
-        $base = dirname(realpath($schemaPath) ?: $schemaPath);
-
-        return 'sqlite:' . $base . '/' . ltrim($path, './');
     }
 }
