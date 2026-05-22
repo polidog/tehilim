@@ -15,6 +15,11 @@ use Polidog\Tehilim\Driver\Driver;
  *   ['lt'|'lte'|'gt'|'gte' => v], ['contains' => 'x'],
  *   ['startsWith' => 'x'], ['endsWith' => 'x']
  *
+ * JSON path filters (when the field value carries a 'path' key):
+ *   ['path' => ['a','b'], 'equals' => v], ['not' => v],
+ *   ['string_contains'|'string_starts_with'|'string_ends_with' => 'x'],
+ *   ['array_contains' => v]
+ *
  * Top-level operators: AND, OR, NOT.
  *
  * Scalar field values are short-hand for ['equals' => value].
@@ -90,6 +95,16 @@ final class WhereCompiler
             return "{$col} = ?";
         }
 
+        if (array_key_exists('path', $value)) {
+            if ($type !== 'json') {
+                throw new InvalidArgumentException(
+                    "JSON 'path' filter is only valid on Json columns ('{$field}' is {$type})",
+                );
+            }
+
+            return $this->compileJsonPath($col, $value, $driver, $params);
+        }
+
         $clauses = [];
         foreach ($value as $op => $v) {
             switch ($op) {
@@ -158,6 +173,96 @@ final class WhereCompiler
                 default:
                     throw new InvalidArgumentException("Unknown where operator '{$op}' on field '{$field}'");
             }
+        }
+
+        return '(' . implode(' AND ', $clauses) . ')';
+    }
+
+    /**
+     * Compile a JSON path filter. $col is already quoted. The value carries a
+     * 'path' (list of keys) plus one or more operators applied to the value at
+     * that path. Comparisons run against the extracted value as text.
+     *
+     * @param array<string,mixed> $value
+     * @param list<mixed>         $params
+     */
+    private function compileJsonPath(string $col, array $value, Driver $driver, array &$params): string
+    {
+        $rawPath = $value['path'];
+        if (!is_array($rawPath) || !array_is_list($rawPath)) {
+            throw new InvalidArgumentException("JSON 'path' must be a list of keys");
+        }
+        $path = [];
+        foreach ($rawPath as $seg) {
+            // Segments are embedded into the SQL path literal, so reject
+            // anything that isn't a plain key — an array/object would stringify
+            // to "Array"/garbage and land in the query.
+            if (!is_string($seg) && !is_int($seg)) {
+                throw new InvalidArgumentException("JSON 'path' segments must be string or int");
+            }
+            $path[] = (string) $seg;
+        }
+
+        $clauses = [];
+        $textExpr = null;
+        foreach ($value as $op => $v) {
+            if ($op === 'path') {
+                continue;
+            }
+
+            switch ($op) {
+                case 'equals':
+                    if ($v === null) {
+                        $clauses[] = ($textExpr ??= $driver->jsonExtractText($col, $path)) . ' IS NULL';
+                    } else {
+                        $params[] = $driver->jsonComparisonText($v);
+                        $clauses[] = ($textExpr ??= $driver->jsonExtractText($col, $path)) . ' = ?';
+                    }
+
+                    break;
+
+                case 'not':
+                    if ($v === null) {
+                        $clauses[] = ($textExpr ??= $driver->jsonExtractText($col, $path)) . ' IS NOT NULL';
+                    } else {
+                        $params[] = $driver->jsonComparisonText($v);
+                        $clauses[] = ($textExpr ??= $driver->jsonExtractText($col, $path)) . ' <> ?';
+                    }
+
+                    break;
+
+                case 'string_contains':
+                    $params[] = '%' . $this->escapeLike((string) $v) . '%';
+                    $clauses[] = ($textExpr ??= $driver->jsonExtractText($col, $path)) . ' LIKE ?';
+
+                    break;
+
+                case 'string_starts_with':
+                    $params[] = $this->escapeLike((string) $v) . '%';
+                    $clauses[] = ($textExpr ??= $driver->jsonExtractText($col, $path)) . ' LIKE ?';
+
+                    break;
+
+                case 'string_ends_with':
+                    $params[] = '%' . $this->escapeLike((string) $v);
+                    $clauses[] = ($textExpr ??= $driver->jsonExtractText($col, $path)) . ' LIKE ?';
+
+                    break;
+
+                case 'array_contains':
+                    [$sql, $bind] = $driver->jsonContains($col, $path, $v);
+                    $params[] = $bind;
+                    $clauses[] = $sql;
+
+                    break;
+
+                default:
+                    throw new InvalidArgumentException("Unknown JSON path operator '{$op}'");
+            }
+        }
+
+        if ($clauses === []) {
+            throw new InvalidArgumentException("JSON 'path' filter requires at least one operator");
         }
 
         return '(' . implode(' AND ', $clauses) . ')';

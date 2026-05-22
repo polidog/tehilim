@@ -41,6 +41,28 @@ final class PostgresDriver extends AbstractPdoDriver
         }
     }
 
+    public function jsonExtractText(string $quotedColumn, array $path): string
+    {
+        // #>> returns the element at the path as text.
+        return sprintf(
+            '(%s #>> %s)',
+            $quotedColumn,
+            $this->quotePathLiteral($this->pgPathArray($path)),
+        );
+    }
+
+    public function jsonContains(string $quotedColumn, array $path, mixed $value): array
+    {
+        // #> yields the element as jsonb; @> tests containment of the candidate.
+        $sql = sprintf(
+            '(%s #> %s)::jsonb @> ?::jsonb',
+            $quotedColumn,
+            $this->quotePathLiteral($this->pgPathArray($path)),
+        );
+
+        return [$sql, json_encode($value)];
+    }
+
     public function listTables(): array
     {
         $stmt = $this->pdoInstance->prepare(
@@ -103,6 +125,22 @@ final class PostgresDriver extends AbstractPdoDriver
         }
 
         return implode(' ', $parts);
+    }
+
+    /**
+     * Build a PostgreSQL text[] path literal (`{"a","b"}`) for the `#>` / `#>>`
+     * operators. Each segment is double-quoted with `"`/`\` escaped.
+     *
+     * @param list<string> $path
+     */
+    private function pgPathArray(array $path): string
+    {
+        $segs = array_map(
+            static fn (string $s): string => '"' . str_replace(['\\', '"'], ['\\\\', '\"'], $s) . '"',
+            $path,
+        );
+
+        return '{' . implode(',', $segs) . '}';
     }
 
     private function sqlType(ColumnDef $col): string
