@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Polidog\Tehilim\Migration;
 
+use Polidog\Tehilim\Client\Relation;
 use Polidog\Tehilim\Schema\Ast\Field;
 use Polidog\Tehilim\Schema\Ast\Invocation;
 use Polidog\Tehilim\Schema\Ast\Model;
@@ -24,16 +25,21 @@ final class TableBuilder
     {
         $out = [];
         foreach ($schema->models as $model) {
-            $out[] = self::fromModel($model);
+            $out[] = self::fromModel($model, self::foreignKeysForModel($model, $schema));
         }
         foreach (self::joinTables($schema) as $jt) {
             $out[] = $jt;
         }
 
-        return $out;
+        // Order tables so a referenced table is created before the table that
+        // references it (required by MySQL/PostgreSQL; harmless on SQLite).
+        return self::topologicalSort($out);
     }
 
-    public static function fromModel(Model $model): TableDef
+    /**
+     * @param list<ForeignKeyDef> $foreignKeys
+     */
+    public static function fromModel(Model $model, array $foreignKeys = []): TableDef
     {
         $columns = [];
         foreach ($model->scalarFields() as $field) {
@@ -61,7 +67,44 @@ final class TableBuilder
             uniqueColumns: $unique,
             compositePrimaryKey: $model->compositePrimaryKey(),
             compositeUniqueGroups: $model->compositeUniqueGroups(),
+            foreignKeys: $foreignKeys,
         );
+    }
+
+    /**
+     * Foreign keys for a model's belongsTo relations (the side that holds the
+     * FK column). hasMany/hasOne and M2M sides hold no FK here.
+     *
+     * @return list<ForeignKeyDef>
+     */
+    public static function foreignKeysForModel(Model $model, Schema $schema): array
+    {
+        $resolver = new RelationResolver($schema);
+        $fks = [];
+        foreach ($model->relationFields() as $field) {
+            try {
+                $rel = $resolver->resolve($model, $field);
+            } catch (Throwable) {
+                continue;
+            }
+            if ($rel->kind !== Relation::BELONGS_TO) {
+                continue;
+            }
+            if (count($rel->localFields) !== 1 || count($rel->foreignFields) !== 1) {
+                continue; // composite-key relations unsupported in v1
+            }
+            $target = $schema->model($rel->target);
+            if ($target === null) {
+                continue;
+            }
+            $fks[] = new ForeignKeyDef(
+                $rel->localFields[0],
+                $target->tableName(),
+                $rel->foreignFields[0],
+            );
+        }
+
+        return $fks;
     }
 
     /** @return list<TableDef> */
@@ -110,6 +153,10 @@ final class TableBuilder
                     uniqueColumns: [],
                     compositePrimaryKey: ['A', 'B'],
                     compositeUniqueGroups: [],
+                    foreignKeys: [
+                        new ForeignKeyDef('A', $firstModel->tableName(), $aPk->columnName()),
+                        new ForeignKeyDef('B', $secondModel->tableName(), $bPk->columnName()),
+                    ],
                 );
             }
         }
@@ -155,5 +202,56 @@ final class TableBuilder
         }
 
         return $val;
+    }
+
+    /**
+     * Order tables so each FK's referenced table appears before the table that
+     * declares it (DFS post-order). Self-references are ignored; cycles don't
+     * loop forever — a node already being visited is skipped, leaving the rest
+     * in a best-effort order (SQLite tolerates it; true cycles would need ALTER).
+     *
+     * @param list<TableDef> $tables
+     *
+     * @return list<TableDef>
+     */
+    private static function topologicalSort(array $tables): array
+    {
+        $byName = [];
+        foreach ($tables as $t) {
+            $byName[$t->name] = $t;
+        }
+
+        $sorted = [];
+        $state = [];
+        foreach ($tables as $t) {
+            self::visit($t, $byName, $state, $sorted);
+        }
+
+        return $sorted;
+    }
+
+    /**
+     * @param array<string,TableDef> $byName
+     * @param array<string,string>   $state  name => 'visiting'|'done'
+     * @param list<TableDef>         $sorted
+     */
+    private static function visit(TableDef $table, array $byName, array &$state, array &$sorted): void
+    {
+        $current = $state[$table->name] ?? null;
+        if ($current === 'done' || $current === 'visiting') {
+            return;
+        }
+        $state[$table->name] = 'visiting';
+        foreach ($table->foreignKeys as $fk) {
+            if ($fk->referencedTable === $table->name) {
+                continue; // self-reference
+            }
+            $dep = $byName[$fk->referencedTable] ?? null;
+            if ($dep !== null) {
+                self::visit($dep, $byName, $state, $sorted);
+            }
+        }
+        $state[$table->name] = 'done';
+        $sorted[] = $table;
     }
 }

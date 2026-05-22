@@ -30,7 +30,7 @@ final class SchemaSync
 
         try {
             if ($drop) {
-                foreach ($this->driver->listTables() as $existing) {
+                foreach ($this->dropOrder($tables) as $existing) {
                     $this->runDdl($pdo, $this->driver->dropTableIfExistsSql($existing));
                 }
             }
@@ -43,6 +43,36 @@ final class SchemaSync
 
             throw $e;
         }
+    }
+
+    /**
+     * Order live tables for dropping: schema tables children-first (reverse of
+     * the FK-aware create order), then any leftover tables not in the schema.
+     * SQLite ignores order; MySQL/PostgreSQL need children dropped first.
+     *
+     * @param list<TableDef> $tables create order (referenced tables first)
+     *
+     * @return list<string>
+     */
+    private function dropOrder(array $tables): array
+    {
+        $live = $this->driver->listTables();
+        $liveSet = array_flip($live);
+
+        $ordered = [];
+        foreach (array_reverse($tables) as $t) {
+            if (isset($liveSet[$t->name])) {
+                $ordered[] = $t->name;
+                unset($liveSet[$t->name]);
+            }
+        }
+        foreach ($live as $name) {
+            if (isset($liveSet[$name])) {
+                $ordered[] = $name;
+            }
+        }
+
+        return $ordered;
     }
 
     private function runDdl(PDO $pdo, string $sql): void

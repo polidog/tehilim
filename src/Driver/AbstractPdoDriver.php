@@ -95,6 +95,15 @@ abstract class AbstractPdoDriver implements Driver
             $lines[] = "UNIQUE ({$cols})";
         }
 
+        foreach ($def->foreignKeys as $fk) {
+            $lines[] = sprintf(
+                'FOREIGN KEY (%s) REFERENCES %s (%s)',
+                $this->quoteIdent($fk->column),
+                $this->quoteIdent($fk->referencedTable),
+                $this->quoteIdent($fk->referencedColumn),
+            );
+        }
+
         return sprintf(
             "CREATE TABLE %s (\n  %s\n)",
             $this->quoteIdent($def->name),
