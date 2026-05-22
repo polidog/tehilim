@@ -7,6 +7,8 @@ namespace Polidog\Tehilim\Driver;
 use PDO;
 use Polidog\Tehilim\Client\IsolationLevel;
 use Polidog\Tehilim\Migration\ColumnDef;
+use Polidog\Tehilim\Schema\IntrospectedColumn;
+use Polidog\Tehilim\Schema\IntrospectedTable;
 use RuntimeException;
 use Throwable;
 
@@ -72,6 +74,49 @@ final class PostgresDriver extends AbstractPdoDriver
         $rows = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
         return array_map(strval(...), $rows);
+    }
+
+    public function introspectTable(string $table): IntrospectedTable
+    {
+        $stmt = $this->pdoInstance->prepare(
+            'SELECT column_name, data_type, is_nullable, is_identity, column_default'
+            . ' FROM information_schema.columns'
+            . ' WHERE table_schema = ANY (current_schemas(false)) AND table_name = ?'
+            . ' ORDER BY ordinal_position',
+        );
+        $stmt->execute([$table]);
+
+        /** @var list<array{column_name:string,data_type:string,is_nullable:string,is_identity:string,column_default:?string}> $rows */
+        $rows = $stmt->fetchAll();
+
+        $pkCols = $this->constraintColumns($table, 'PRIMARY KEY');
+        $singlePk = count($pkCols) === 1 ? $pkCols[0] : null;
+
+        [$uniqueSingle, $compositeUniques] = $this->uniqueGroups($table);
+
+        $columns = [];
+        foreach ($rows as $r) {
+            $name = $r['column_name'];
+            $isSinglePk = $name === $singlePk;
+            $default = $r['column_default'];
+            $isSerial = is_string($default) && str_starts_with($default, 'nextval(');
+            $isIdentity = strtoupper($r['is_identity']) === 'YES';
+            $columns[] = new IntrospectedColumn(
+                name: $name,
+                tehilimType: $this->tehilimType($r['data_type']),
+                nullable: strtoupper($r['is_nullable']) === 'YES',
+                autoIncrement: $isSinglePk && ($isSerial || $isIdentity),
+                primaryKey: $isSinglePk,
+                unique: isset($uniqueSingle[$name]),
+            );
+        }
+
+        return new IntrospectedTable(
+            $table,
+            $columns,
+            count($pkCols) >= 2 ? $pkCols : null,
+            $compositeUniques,
+        );
     }
 
     public function multiInsertSql(string $table, array $columns, int $rowCount, bool $skipDuplicates): string
@@ -141,6 +186,77 @@ final class PostgresDriver extends AbstractPdoDriver
         );
 
         return '{' . implode(',', $segs) . '}';
+    }
+
+    private function tehilimType(string $dataType): string
+    {
+        return match (strtolower($dataType)) {
+            'integer', 'int', 'int4', 'smallint' => 'Int',
+            'bigint', 'int8' => 'BigInt',
+            'double precision', 'real', 'float8', 'float4' => 'Float',
+            'numeric', 'decimal' => 'Decimal',
+            'boolean', 'bool' => 'Boolean',
+            'timestamp without time zone', 'timestamp with time zone', 'timestamp', 'date' => 'DateTime',
+            'jsonb', 'json' => 'Json',
+            'bytea' => 'Bytes',
+            default => 'String',
+        };
+    }
+
+    /**
+     * @return list<string> columns of the table's constraint of the given type, in order
+     */
+    private function constraintColumns(string $table, string $constraintType): array
+    {
+        $stmt = $this->pdoInstance->prepare(
+            'SELECT kcu.column_name'
+            . ' FROM information_schema.table_constraints tc'
+            . ' JOIN information_schema.key_column_usage kcu'
+            . ' ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema'
+            . ' WHERE tc.table_schema = ANY (current_schemas(false))'
+            . ' AND tc.table_name = ? AND tc.constraint_type = ?'
+            . ' ORDER BY kcu.ordinal_position',
+        );
+        $stmt->execute([$table, $constraintType]);
+
+        return array_map(strval(...), $stmt->fetchAll(PDO::FETCH_COLUMN));
+    }
+
+    /**
+     * @return array{0:array<string,true>,1:list<list<string>>} single uniques keyed by column, plus composite groups
+     */
+    private function uniqueGroups(string $table): array
+    {
+        $stmt = $this->pdoInstance->prepare(
+            'SELECT tc.constraint_name, kcu.column_name'
+            . ' FROM information_schema.table_constraints tc'
+            . ' JOIN information_schema.key_column_usage kcu'
+            . ' ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema'
+            . ' WHERE tc.table_schema = ANY (current_schemas(false))'
+            . " AND tc.table_name = ? AND tc.constraint_type = 'UNIQUE'"
+            . ' ORDER BY tc.constraint_name, kcu.ordinal_position',
+        );
+        $stmt->execute([$table]);
+
+        /** @var list<array{constraint_name:string,column_name:string}> $rows */
+        $rows = $stmt->fetchAll();
+
+        $byConstraint = [];
+        foreach ($rows as $r) {
+            $byConstraint[$r['constraint_name']][] = $r['column_name'];
+        }
+
+        $single = [];
+        $composite = [];
+        foreach ($byConstraint as $cols) {
+            if (count($cols) === 1) {
+                $single[$cols[0]] = true;
+            } else {
+                $composite[] = $cols;
+            }
+        }
+
+        return [$single, $composite];
     }
 
     private function sqlType(ColumnDef $col): string

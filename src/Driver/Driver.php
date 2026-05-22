@@ -8,6 +8,7 @@ use PDO;
 use Polidog\Tehilim\Client\IsolationLevel;
 use Polidog\Tehilim\Migration\ColumnDef;
 use Polidog\Tehilim\Migration\TableDef;
+use Polidog\Tehilim\Schema\IntrospectedTable;
 
 interface Driver
 {
@@ -90,6 +91,14 @@ interface Driver
      * @return list<string>
      */
     public function listTables(): array;
+
+    /**
+     * Read a live table's structure back into a dialect-neutral
+     * {@see IntrospectedTable} for `db pull`. Column types are mapped to
+     * schema-level type names; PK / unique (single + composite) and
+     * auto-increment are detected. Relations are not inferred here.
+     */
+    public function introspectTable(string $table): IntrospectedTable;
 
     public function addColumnSql(string $table, ColumnDef $col): string;
 

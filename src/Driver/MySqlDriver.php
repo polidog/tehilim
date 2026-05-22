@@ -7,6 +7,8 @@ namespace Polidog\Tehilim\Driver;
 use PDO;
 use Polidog\Tehilim\Client\IsolationLevel;
 use Polidog\Tehilim\Migration\ColumnDef;
+use Polidog\Tehilim\Schema\IntrospectedColumn;
+use Polidog\Tehilim\Schema\IntrospectedTable;
 
 final class MySqlDriver extends AbstractPdoDriver
 {
@@ -54,6 +56,46 @@ final class MySqlDriver extends AbstractPdoDriver
         $rows = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
         return array_map(strval(...), $rows);
+    }
+
+    public function introspectTable(string $table): IntrospectedTable
+    {
+        $stmt = $this->pdoInstance->prepare(
+            'SELECT COLUMN_NAME, DATA_TYPE, COLUMN_TYPE, IS_NULLABLE, COLUMN_KEY, EXTRA'
+            . ' FROM information_schema.columns'
+            . ' WHERE table_schema = DATABASE() AND table_name = ?'
+            . ' ORDER BY ORDINAL_POSITION',
+        );
+        $stmt->execute([$table]);
+
+        /** @var list<array{COLUMN_NAME:string,DATA_TYPE:string,COLUMN_TYPE:string,IS_NULLABLE:string,COLUMN_KEY:string,EXTRA:string}> $rows */
+        $rows = $stmt->fetchAll();
+
+        $pkCols = $this->primaryKeyColumns($table);
+        $singlePk = count($pkCols) === 1 ? $pkCols[0] : null;
+
+        [$uniqueSingle, $compositeUniques] = $this->uniqueGroups($table);
+
+        $columns = [];
+        foreach ($rows as $r) {
+            $name = $r['COLUMN_NAME'];
+            $isSinglePk = $name === $singlePk;
+            $columns[] = new IntrospectedColumn(
+                name: $name,
+                tehilimType: $this->tehilimType($r['DATA_TYPE'], $r['COLUMN_TYPE']),
+                nullable: strtoupper($r['IS_NULLABLE']) === 'YES',
+                autoIncrement: $isSinglePk && str_contains(strtolower($r['EXTRA']), 'auto_increment'),
+                primaryKey: $isSinglePk,
+                unique: isset($uniqueSingle[$name]),
+            );
+        }
+
+        return new IntrospectedTable(
+            $table,
+            $columns,
+            count($pkCols) >= 2 ? $pkCols : null,
+            $compositeUniques,
+        );
     }
 
     public function dropIndexSql(string $indexName, string $table): string
@@ -104,6 +146,73 @@ final class MySqlDriver extends AbstractPdoDriver
             'bytes' => 'LONGBLOB',
             default => 'VARCHAR(255)',
         };
+    }
+
+    private function tehilimType(string $dataType, string $columnType): string
+    {
+        $t = strtolower($dataType);
+        // tinyint(1) is MySQL's idiomatic boolean.
+        if ($t === 'tinyint' && str_contains(strtolower($columnType), '(1)')) {
+            return 'Boolean';
+        }
+
+        return match ($t) {
+            'bigint' => 'BigInt',
+            'int', 'integer', 'smallint', 'mediumint', 'tinyint' => 'Int',
+            'double', 'float', 'real' => 'Float',
+            'decimal', 'numeric' => 'Decimal',
+            'datetime', 'timestamp' => 'DateTime',
+            'json' => 'Json',
+            'blob', 'tinyblob', 'mediumblob', 'longblob', 'binary', 'varbinary' => 'Bytes',
+            default => 'String',
+        };
+    }
+
+    /** @return list<string> primary key columns in order */
+    private function primaryKeyColumns(string $table): array
+    {
+        $stmt = $this->pdoInstance->prepare(
+            'SELECT COLUMN_NAME FROM information_schema.key_column_usage'
+            . ' WHERE table_schema = DATABASE() AND table_name = ?'
+            . " AND constraint_name = 'PRIMARY' ORDER BY ORDINAL_POSITION",
+        );
+        $stmt->execute([$table]);
+
+        return array_map(strval(...), $stmt->fetchAll(PDO::FETCH_COLUMN));
+    }
+
+    /**
+     * @return array{0:array<string,true>,1:list<list<string>>} single uniques keyed by column, plus composite groups
+     */
+    private function uniqueGroups(string $table): array
+    {
+        $stmt = $this->pdoInstance->prepare(
+            'SELECT INDEX_NAME, COLUMN_NAME FROM information_schema.statistics'
+            . ' WHERE table_schema = DATABASE() AND table_name = ?'
+            . " AND NON_UNIQUE = 0 AND INDEX_NAME <> 'PRIMARY'"
+            . ' ORDER BY INDEX_NAME, SEQ_IN_INDEX',
+        );
+        $stmt->execute([$table]);
+
+        /** @var list<array{INDEX_NAME:string,COLUMN_NAME:string}> $rows */
+        $rows = $stmt->fetchAll();
+
+        $byIndex = [];
+        foreach ($rows as $r) {
+            $byIndex[$r['INDEX_NAME']][] = $r['COLUMN_NAME'];
+        }
+
+        $single = [];
+        $composite = [];
+        foreach ($byIndex as $cols) {
+            if (count($cols) === 1) {
+                $single[$cols[0]] = true;
+            } else {
+                $composite[] = $cols;
+            }
+        }
+
+        return [$single, $composite];
     }
 
     private function defaultLiteral(ColumnDef $col): string
