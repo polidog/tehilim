@@ -104,30 +104,13 @@ final class MigrateCommand
         $schema = Parser::parseFile($schemaPath);
         $ds = $schema->datasources[0] ?? throw new RuntimeException('schema has no datasource block');
         $url = $ds->url() ?? throw new RuntimeException("datasource '{$ds->name}' has no url");
-        $resolvedUrl = $this->resolveUrl($url, $schemaPath);
+        $resolvedUrl = Options::resolveSqliteUrl($url, $schemaPath);
         $driver = Drivers::forPdo(Config::pdo($resolvedUrl));
 
         $migrationsDir = dirname(realpath($schemaPath) ?: $schemaPath) . '/migrations';
         $store = new MigrationStore($migrationsDir);
 
         return new Migrator($driver, $store, $schemaPath);
-    }
-
-    private function resolveUrl(string $url, string $schemaPath): string
-    {
-        if (!str_starts_with($url, 'sqlite:')) {
-            return $url;
-        }
-        $path = substr($url, strlen('sqlite:'));
-        if ($path === '' || str_starts_with($path, '/') || str_starts_with($path, ':')) {
-            return $url;
-        }
-        $base = dirname(realpath($schemaPath) ?: $schemaPath);
-        // Strip only a single leading "./" — ltrim($path, './') would treat
-        // "./" as a character mask and corrupt "../foo" into "foo".
-        $rel = str_starts_with($path, './') ? substr($path, 2) : $path;
-
-        return 'sqlite:' . $base . '/' . $rel;
     }
 
     private function help(): int
