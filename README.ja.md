@@ -168,6 +168,8 @@ $db->doc->findMany(['where' => [
 
 スキーマに宣言したリレーションは、各行の optional キーとして表現されます。`include` で要求すると、Tehilim はリレーションごとに 1 本の `IN` クエリでまとめて読み込み、結果を親行にマージします。
 
+`push` とマイグレーションは、各 `belongsTo`(`@relation`)と暗黙の many-to-many join テーブルに `FOREIGN KEY` 制約を発行し、参照先テーブルを先に作る依存順でテーブルを生成します。
+
 ```php
 // hasMany: User.posts
 $users = $db->user->findMany([

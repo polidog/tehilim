@@ -206,6 +206,10 @@ Relations declared in the schema become optional keys on each row. Ask for
 them with `include`; Tehilim runs one batched `IN` query per relation and
 merges the results.
 
+`push` and migrations emit a `FOREIGN KEY` constraint for each `belongsTo`
+(`@relation`) and for the implicit many-to-many join table, and create tables
+in dependency order (referenced table first) so the constraints apply cleanly.
+
 ```php
 // hasMany: User.posts
 $users = $db->user->findMany([
