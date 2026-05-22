@@ -30,13 +30,17 @@ final class JsonPathTest extends TestCase
     {
         $db = $this->makeClient('Json1');
 
-        $db->doc->insert(['data' => ['profile' => [
+        $db->doc->insert(['data' => ['lang' => 'ja', 'profile' => [
             'address' => ['city' => 'Tokyo'],
             'tags' => ['php', 'sql'],
+            'active' => true,
+            'score' => 42,
         ]]]);
-        $db->doc->insert(['data' => ['profile' => [
+        $db->doc->insert(['data' => ['lang' => 'en', 'profile' => [
             'address' => ['city' => 'Osaka'],
             'tags' => ['go'],
+            'active' => false,
+            'score' => 7,
         ]]]);
 
         $cities = fn (array $rows): array => array_map(
@@ -68,6 +72,18 @@ final class JsonPathTest extends TestCase
         ]]);
         self::assertSame(['Tokyo'], $cities($rows));
 
+        // boolean JSON value (SQLite stores it as 1/0; driver normalizes)
+        $rows = $db->doc->findMany(['where' => [
+            'profile' => ['path' => ['active'], 'equals' => true],
+        ]]);
+        self::assertSame(['Tokyo'], $cities($rows));
+
+        // numeric JSON value
+        $rows = $db->doc->findMany(['where' => [
+            'profile' => ['path' => ['score'], 'equals' => 42],
+        ]]);
+        self::assertSame(['Tokyo'], $cities($rows));
+
         // no match
         $rows = $db->doc->findMany(['where' => [
             'profile' => ['path' => ['address', 'city'], 'equals' => 'Kyoto'],
@@ -75,7 +91,18 @@ final class JsonPathTest extends TestCase
         self::assertSame([], $rows);
 
         // combined with a normal column filter via AND
-        self::assertSame(2, $db->doc->count());
+        $rows = $db->doc->findMany(['where' => ['AND' => [
+            ['lang' => 'ja'],
+            ['profile' => ['path' => ['tags'], 'array_contains' => 'php']],
+        ]]]);
+        self::assertSame(['Tokyo'], $cities($rows));
+
+        // same JSON filter but the normal column excludes the row
+        $rows = $db->doc->findMany(['where' => ['AND' => [
+            ['lang' => 'en'],
+            ['profile' => ['path' => ['tags'], 'array_contains' => 'php']],
+        ]]]);
+        self::assertSame([], $rows);
     }
 
     private function makeClient(string $ns): object
@@ -85,7 +112,8 @@ datasource db { provider = "sqlite" url = "sqlite::memory:" }
 generator client { output = "./gen" namespace = "{$ns}\\\\Gen" }
 
 model Doc {
-  id      Int  @id @default(autoincrement())
+  id      Int    @id @default(autoincrement())
+  lang    String
   profile Json
 }
 TXT);

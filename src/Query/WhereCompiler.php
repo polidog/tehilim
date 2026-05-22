@@ -200,7 +200,7 @@ final class WhereCompiler
                     if ($v === null) {
                         $clauses[] = ($textExpr ??= $driver->jsonExtractText($col, $path)) . ' IS NULL';
                     } else {
-                        $params[] = $this->jsonScalar($v);
+                        $params[] = $driver->jsonComparisonText($v);
                         $clauses[] = ($textExpr ??= $driver->jsonExtractText($col, $path)) . ' = ?';
                     }
 
@@ -210,7 +210,7 @@ final class WhereCompiler
                     if ($v === null) {
                         $clauses[] = ($textExpr ??= $driver->jsonExtractText($col, $path)) . ' IS NOT NULL';
                     } else {
-                        $params[] = $this->jsonScalar($v);
+                        $params[] = $driver->jsonComparisonText($v);
                         $clauses[] = ($textExpr ??= $driver->jsonExtractText($col, $path)) . ' <> ?';
                     }
 
@@ -251,20 +251,6 @@ final class WhereCompiler
         }
 
         return '(' . implode(' AND ', $clauses) . ')';
-    }
-
-    /**
-     * Normalize a scalar for text comparison against an extracted JSON value.
-     * Booleans become the JSON literals true/false; everything else is cast to
-     * string so PostgreSQL's text extraction compares cleanly.
-     */
-    private function jsonScalar(mixed $v): string
-    {
-        if (is_bool($v)) {
-            return $v ? 'true' : 'false';
-        }
-
-        return (string) $v;
     }
 
     private function escapeLike(string $s): string

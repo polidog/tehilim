@@ -22,13 +22,18 @@ final class JsonSqlTest extends TestCase
         $d = new SqliteDriver($this->pdo());
 
         self::assertSame(
-            'json_extract("profile", \'$."address"."city"\')',
+            'CAST(json_extract("profile", \'$."address"."city"\') AS TEXT)',
             $d->jsonExtractText('"profile"', ['address', 'city']),
         );
 
         [$sql, $bind] = $d->jsonContains('"tags"', ['tags'], 'php');
         self::assertSame('EXISTS (SELECT 1 FROM json_each("tags", \'$."tags"\') WHERE value = ?)', $sql);
         self::assertSame('php', $bind, 'SQLite binds the raw scalar');
+
+        // SQLite renders JSON booleans as 1/0, not true/false.
+        self::assertSame('1', $d->jsonComparisonText(true));
+        self::assertSame('0', $d->jsonComparisonText(false));
+        self::assertSame('42', $d->jsonComparisonText(42));
     }
 
     public function testMysql(): void
@@ -43,6 +48,8 @@ final class JsonSqlTest extends TestCase
         [$sql, $bind] = $d->jsonContains('`tags`', ['tags'], 'php');
         self::assertSame('JSON_CONTAINS(`tags`, ?, \'$."tags"\')', $sql);
         self::assertSame('"php"', $bind, 'MySQL binds a JSON-encoded candidate');
+
+        self::assertSame('true', $d->jsonComparisonText(true), 'MySQL JSON_UNQUOTE yields true/false');
     }
 
     public function testPostgres(): void
@@ -54,9 +61,13 @@ final class JsonSqlTest extends TestCase
             $d->jsonExtractText('"profile"', ['address', 'city']),
         );
 
+        // Scalar candidate is correct: PG treats an array as containing a
+        // primitive, so `'["php"]'::jsonb @> '"php"'::jsonb` is true.
         [$sql, $bind] = $d->jsonContains('"tags"', ['tags'], 'php');
         self::assertSame('("tags" #> \'{"tags"}\')::jsonb @> ?::jsonb', $sql);
         self::assertSame('"php"', $bind, 'PostgreSQL binds a JSON-encoded candidate');
+
+        self::assertSame('true', $d->jsonComparisonText(true), 'PostgreSQL #>> yields true/false');
     }
 
     public function testPathSegmentsAreEscaped(): void
@@ -65,7 +76,7 @@ final class JsonSqlTest extends TestCase
         // A key containing a double quote (path syntax) and a single quote
         // (SQL string literal) must both be neutralized.
         self::assertSame(
-            'json_extract("c", \'$."a\"b"."x\'\'y"\')',
+            'CAST(json_extract("c", \'$."a\"b"."x\'\'y"\') AS TEXT)',
             $sqlite->jsonExtractText('"c"', ['a"b', "x'y"]),
         );
 

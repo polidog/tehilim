@@ -197,6 +197,17 @@ abstract class AbstractPdoDriver implements Driver
         };
     }
 
+    public function jsonComparisonText(mixed $value): string
+    {
+        // PostgreSQL #>> and MySQL JSON_UNQUOTE both render JSON booleans as
+        // the text 'true'/'false'. SqliteDriver overrides this.
+        if (is_bool($value)) {
+            return $value ? 'true' : 'false';
+        }
+
+        return (string) $value;
+    }
+
     /**
      * Build a MySQL/SQLite-style JSON path string (`$."a"."b"`) from a key
      * list. Each segment is wrapped in double quotes so arbitrary keys stay

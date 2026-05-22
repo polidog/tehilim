@@ -32,11 +32,25 @@ final class SqliteDriver extends AbstractPdoDriver
 
     public function jsonExtractText(string $quotedColumn, array $path): string
     {
+        // json_extract returns typed scalars (ints stay ints, JSON booleans
+        // come back as 0/1). CAST AS TEXT pins the result to text so numeric
+        // and string `equals` compare the same way they do on PG/MySQL.
         return sprintf(
-            'json_extract(%s, %s)',
+            'CAST(json_extract(%s, %s) AS TEXT)',
             $quotedColumn,
             $this->quotePathLiteral($this->jsonPathDollar($path)),
         );
+    }
+
+    public function jsonComparisonText(mixed $value): string
+    {
+        // SQLite has no native boolean: JSON true/false extract (and CAST) to
+        // '1'/'0', so a boolean candidate must compare against those.
+        if (is_bool($value)) {
+            return $value ? '1' : '0';
+        }
+
+        return (string) $value;
     }
 
     public function jsonContains(string $quotedColumn, array $path, mixed $value): array

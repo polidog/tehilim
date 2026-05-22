@@ -61,6 +61,13 @@ interface Driver
     public function jsonContains(string $quotedColumn, array $path, mixed $value): array;
 
     /**
+     * Normalize a scalar so it compares correctly against the text produced by
+     * {@see jsonExtractText()}. Mainly handles booleans, whose textual form
+     * differs by dialect (PostgreSQL/MySQL yield `true`/`false`, SQLite `1`/`0`).
+     */
+    public function jsonComparisonText(mixed $value): string;
+
+    /**
      * Insert a row and return the row including any DB-generated values.
      *
      * @param array<string,mixed> $data       column => value
