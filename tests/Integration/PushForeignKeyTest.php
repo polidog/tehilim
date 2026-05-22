@@ -70,6 +70,62 @@ TXT);
         self::assertSame(['table' => 'User', 'from' => 'authorId', 'to' => 'id'], $fks[0]);
     }
 
+    public function testForeignKeyUsesMappedColumnNames(): void
+    {
+        // Both the FK-holding field and the referenced PK use @map, so the FK
+        // must reference the *column* names, not the schema field names.
+        $schema = Parser::parseString(<<<'TXT'
+datasource db { provider = "sqlite" url = "sqlite::memory:" }
+
+model User {
+  id    Int    @id @default(autoincrement()) @map("user_id")
+  posts Post[]
+}
+
+model Post {
+  id       Int  @id @default(autoincrement())
+  authorId Int  @map("author_id")
+  author   User @relation(fields: [authorId], references: [id])
+}
+TXT);
+
+        $driver = new SqliteDriver(new PDO('sqlite::memory:'));
+        $tables = TableBuilder::fromSchema($schema);
+        $post = $this->table($tables, 'Post');
+
+        $sql = $driver->createTableSql($post);
+        self::assertStringContainsString('FOREIGN KEY ("author_id") REFERENCES "User" ("user_id")', $sql);
+
+        $pdo = new PDO('sqlite::memory:');
+        (new SchemaSync(new SqliteDriver($pdo), $schema))->push(drop: true);
+
+        $fks = $this->liveForeignKeys($pdo, 'Post');
+        self::assertSame(['table' => 'User', 'from' => 'author_id', 'to' => 'user_id'], $fks[0]);
+    }
+
+    public function testPushDropsLeftoverTablesNotInSchema(): void
+    {
+        $schema = Parser::parseString(<<<'TXT'
+datasource db { provider = "sqlite" url = "sqlite::memory:" }
+
+model User {
+  id Int @id @default(autoincrement())
+}
+TXT);
+
+        $pdo = new PDO('sqlite::memory:');
+        $this->runSql($pdo, 'CREATE TABLE "User" ("id" INTEGER PRIMARY KEY)');
+        // A leftover table holding an FK back into a schema table; on
+        // MySQL/PostgreSQL this must be dropped before "User".
+        $this->runSql($pdo, 'CREATE TABLE "Legacy" ("id" INTEGER PRIMARY KEY, "uid" INTEGER REFERENCES "User" ("id"))');
+
+        (new SchemaSync(new SqliteDriver($pdo), $schema))->push(drop: true);
+
+        $tables = $this->liveTables($pdo);
+        self::assertContains('User', $tables);
+        self::assertNotContains('Legacy', $tables);
+    }
+
     public function testPushCreatesJoinTableForeignKeys(): void
     {
         $schema = Parser::parseString(<<<'TXT'
@@ -135,6 +191,25 @@ TXT);
             }
         }
         self::fail("table {$name} not built");
+    }
+
+    private function runSql(PDO $pdo, string $sql): void
+    {
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute();
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function liveTables(PDO $pdo): array
+    {
+        $stmt = $pdo->prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'");
+        $stmt->execute();
+        /** @var list<string> $names */
+        $names = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+        return $names;
     }
 
     /**

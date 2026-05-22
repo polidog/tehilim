@@ -97,10 +97,18 @@ final class TableBuilder
             if ($target === null) {
                 continue;
             }
+            // @relation(fields/references) names are *schema field names*, which
+            // can differ from column names via @map. Resolve to columns so the
+            // FK references real columns; skip if either field is unknown.
+            $localField = $model->field($rel->localFields[0]);
+            $foreignField = $target->field($rel->foreignFields[0]);
+            if ($localField === null || $foreignField === null) {
+                continue;
+            }
             $fks[] = new ForeignKeyDef(
-                $rel->localFields[0],
+                $localField->columnName(),
                 $target->tableName(),
-                $rel->foreignFields[0],
+                $foreignField->columnName(),
             );
         }
 

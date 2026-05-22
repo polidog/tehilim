@@ -46,9 +46,11 @@ final class SchemaSync
     }
 
     /**
-     * Order live tables for dropping: schema tables children-first (reverse of
-     * the FK-aware create order), then any leftover tables not in the schema.
-     * SQLite ignores order; MySQL/PostgreSQL need children dropped first.
+     * Order live tables for dropping: leftover tables (not in the schema) first,
+     * then schema tables children-first (reverse of the FK-aware create order).
+     * SQLite ignores order; MySQL/PostgreSQL need children dropped first. A
+     * leftover table may carry an FK referencing a schema table, so it must go
+     * before the schema tables it points at.
      *
      * @param list<TableDef> $tables create order (referenced tables first)
      *
@@ -57,18 +59,23 @@ final class SchemaSync
     private function dropOrder(array $tables): array
     {
         $live = $this->driver->listTables();
+        $schemaNames = [];
+        foreach ($tables as $t) {
+            $schemaNames[$t->name] = true;
+        }
         $liveSet = array_flip($live);
 
         $ordered = [];
+        foreach ($live as $name) {
+            if (!isset($schemaNames[$name])) {
+                $ordered[] = $name;
+                unset($liveSet[$name]);
+            }
+        }
         foreach (array_reverse($tables) as $t) {
             if (isset($liveSet[$t->name])) {
                 $ordered[] = $t->name;
                 unset($liveSet[$t->name]);
-            }
-        }
-        foreach ($live as $name) {
-            if (isset($liveSet[$name])) {
-                $ordered[] = $name;
             }
         }
 
