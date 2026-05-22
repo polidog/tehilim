@@ -88,6 +88,11 @@ final class MigrateCommand
     private function reset(array $args): int
     {
         $opts = Options::parse($args);
+        if (!isset($opts['extra']['force'])) {
+            fwrite(STDERR, "tehilim: 'migrate reset' drops every table and re-applies all migrations. Re-run with --force to confirm.\n");
+
+            return 1;
+        }
         $this->migrator($opts['schema'])->reset();
         echo "Database reset and migrations re-applied.\n";
 
@@ -99,27 +104,13 @@ final class MigrateCommand
         $schema = Parser::parseFile($schemaPath);
         $ds = $schema->datasources[0] ?? throw new RuntimeException('schema has no datasource block');
         $url = $ds->url() ?? throw new RuntimeException("datasource '{$ds->name}' has no url");
-        $resolvedUrl = $this->resolveUrl($url, $schemaPath);
+        $resolvedUrl = Options::resolveSqliteUrl($url, $schemaPath);
         $driver = Drivers::forPdo(Config::pdo($resolvedUrl));
 
         $migrationsDir = dirname(realpath($schemaPath) ?: $schemaPath) . '/migrations';
         $store = new MigrationStore($migrationsDir);
 
         return new Migrator($driver, $store, $schemaPath);
-    }
-
-    private function resolveUrl(string $url, string $schemaPath): string
-    {
-        if (!str_starts_with($url, 'sqlite:')) {
-            return $url;
-        }
-        $path = substr($url, strlen('sqlite:'));
-        if ($path === '' || str_starts_with($path, '/') || str_starts_with($path, ':')) {
-            return $url;
-        }
-        $base = dirname(realpath($schemaPath) ?: $schemaPath);
-
-        return 'sqlite:' . $base . '/' . ltrim($path, './');
     }
 
     private function help(): int
@@ -129,7 +120,7 @@ Usage:
   tehilim migrate dev     --name <slug> [--schema <path>]  Diff, write, and apply a new migration
   tehilim migrate deploy  [--schema <path>]                Apply unapplied migrations
   tehilim migrate status  [--schema <path>]                Show applied / pending
-  tehilim migrate reset   [--schema <path>]                Drop everything and re-apply (DEV ONLY)
+  tehilim migrate reset   --force [--schema <path>]        Drop everything and re-apply (DEV ONLY)
 
 TXT;
 

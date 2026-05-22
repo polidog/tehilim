@@ -44,12 +44,12 @@ tehilim — schema-first PHP database toolkit
 Usage:
   tehilim init [--schema <path>]            Create a starter tehilim/schema.tehilim
   tehilim generate [--schema <path>]        Generate typed client from schema
-  tehilim push [--schema <path>]            Sync schema to DB destructively (prototyping)
+  tehilim push --force [--schema <path>]    Sync schema to DB destructively (prototyping)
   tehilim pull [--schema <path>] [--print]  Introspect an existing DB into a schema
   tehilim migrate dev    --name <slug>      Diff schema, write a migration, apply it
   tehilim migrate deploy                    Apply unapplied migrations
   tehilim migrate status                    Show applied / pending migrations
-  tehilim migrate reset                     Drop tables + re-apply all (DEV ONLY)
+  tehilim migrate reset --force             Drop tables + re-apply all (DEV ONLY)
 
 Default schema path: ./tehilim/schema.tehilim
 

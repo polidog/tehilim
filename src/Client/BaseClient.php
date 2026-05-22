@@ -7,6 +7,7 @@ namespace Polidog\Tehilim\Client;
 use Closure;
 use InvalidArgumentException;
 use LogicException;
+use PDO;
 use Polidog\Tehilim\Cache\RequestCache;
 use Polidog\Tehilim\Driver\Driver;
 use Throwable;
@@ -100,13 +101,13 @@ abstract class BaseClient
 
                 return $result;
             } catch (Rollback $r) {
-                $pdo->prepare("ROLLBACK TO SAVEPOINT {$sp}")->execute();
-                $pdo->prepare("RELEASE SAVEPOINT {$sp}")->execute();
+                $this->safeSavepoint($pdo, "ROLLBACK TO SAVEPOINT {$sp}");
+                $this->safeSavepoint($pdo, "RELEASE SAVEPOINT {$sp}");
 
                 return $r->payload;
             } catch (Throwable $e) {
-                $pdo->prepare("ROLLBACK TO SAVEPOINT {$sp}")->execute();
-                $pdo->prepare("RELEASE SAVEPOINT {$sp}")->execute();
+                $this->safeSavepoint($pdo, "ROLLBACK TO SAVEPOINT {$sp}");
+                $this->safeSavepoint($pdo, "RELEASE SAVEPOINT {$sp}");
 
                 throw $e;
             }
@@ -148,6 +149,20 @@ abstract class BaseClient
             $this->driver->pdo()->rollBack();
         } catch (Throwable) {
             // no active transaction — swallow
+        }
+    }
+
+    /**
+     * Run a savepoint cleanup statement (ROLLBACK TO / RELEASE) without letting
+     * its own failure mask the outcome being unwound. If the savepoint is
+     * already gone or the connection was aborted, there is nothing left to do.
+     */
+    private function safeSavepoint(PDO $pdo, string $sql): void
+    {
+        try {
+            $pdo->prepare($sql)->execute();
+        } catch (Throwable) {
+            // savepoint already released / connection aborted — swallow
         }
     }
 }

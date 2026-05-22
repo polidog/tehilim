@@ -112,6 +112,37 @@ final class SchemaDiff
             );
         }
 
+        $oldFks = $this->indexForeignKeys($old);
+        $newFks = $this->indexForeignKeys($new);
+        foreach (array_diff(array_keys($newFks), array_keys($oldFks)) as $sig) {
+            $out[] = sprintf(
+                '-- MANUAL: foreign key added on %s (%s); Tehilim v1 does not auto-alter foreign keys on existing tables.',
+                $new->name,
+                $sig,
+            );
+        }
+        foreach (array_diff(array_keys($oldFks), array_keys($newFks)) as $sig) {
+            $out[] = sprintf(
+                '-- MANUAL: foreign key removed on %s (%s); Tehilim v1 does not auto-alter foreign keys on existing tables.',
+                $new->name,
+                $sig,
+            );
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return array<string,ForeignKeyDef>
+     */
+    private function indexForeignKeys(TableDef $table): array
+    {
+        $out = [];
+        foreach ($table->foreignKeys as $fk) {
+            $sig = sprintf('%s -> %s.%s', $fk->column, $fk->referencedTable, $fk->referencedColumn);
+            $out[$sig] = $fk;
+        }
+
         return $out;
     }
 

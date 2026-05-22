@@ -14,6 +14,26 @@ use Throwable;
 
 final class Generator
 {
+    /**
+     * PHP keywords that cannot be used as a class name. A model named after one
+     * of these would produce uncompilable generated code (e.g. `final class
+     * match extends ...`), so reject it up front with a clear message.
+     */
+    private const RESERVED_NAMES = [
+        'abstract', 'and', 'array', 'as', 'break', 'callable', 'case', 'catch',
+        'class', 'clone', 'const', 'continue', 'declare', 'default', 'do', 'echo',
+        'else', 'elseif', 'empty', 'enddeclare', 'endfor', 'endforeach', 'endif',
+        'endswitch', 'endwhile', 'enum', 'eval', 'exit', 'extends', 'final',
+        'finally', 'fn', 'for', 'foreach', 'function', 'global', 'goto', 'if',
+        'implements', 'include', 'include_once', 'instanceof', 'insteadof',
+        'interface', 'isset', 'list', 'match', 'namespace', 'new', 'or', 'print',
+        'private', 'protected', 'public', 'readonly', 'require', 'require_once',
+        'return', 'static', 'switch', 'throw', 'trait', 'try', 'unset', 'use',
+        'var', 'while', 'xor', 'yield',
+        'bool', 'false', 'float', 'int', 'iterable', 'mixed', 'never', 'null',
+        'object', 'parent', 'self', 'string', 'true', 'void',
+    ];
+
     private readonly RelationResolver $resolver;
 
     public function __construct(
@@ -27,6 +47,14 @@ final class Generator
 
     public function generate(): void
     {
+        foreach ($this->schema->models as $model) {
+            if (in_array(strtolower($model->name), self::RESERVED_NAMES, true)) {
+                throw new RuntimeException(
+                    "Model name '{$model->name}' is a reserved PHP keyword and cannot be used as a generated class name.",
+                );
+            }
+        }
+
         $modelDir = $this->outputDir . '/Model';
         if (!is_dir($modelDir) && !mkdir($modelDir, 0755, true) && !is_dir($modelDir)) {
             throw new RuntimeException("Cannot create directory: {$modelDir}");

@@ -27,6 +27,16 @@ abstract class AbstractPdoDriver implements Driver
         return $this->pdoInstance;
     }
 
+    public function supportsTransactionalDdl(): bool
+    {
+        return true;
+    }
+
+    public function likeEscapeClause(): string
+    {
+        return '';
+    }
+
     public function beginTransaction(?IsolationLevel $level = null): void
     {
         if ($level !== null) {

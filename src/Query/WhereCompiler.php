@@ -154,19 +154,19 @@ final class WhereCompiler
 
                 case 'contains':
                     $params[] = '%' . $this->escapeLike((string) $v) . '%';
-                    $clauses[] = "{$col} LIKE ?";
+                    $clauses[] = "{$col} LIKE ?" . $driver->likeEscapeClause();
 
                     break;
 
                 case 'startsWith':
                     $params[] = $this->escapeLike((string) $v) . '%';
-                    $clauses[] = "{$col} LIKE ?";
+                    $clauses[] = "{$col} LIKE ?" . $driver->likeEscapeClause();
 
                     break;
 
                 case 'endsWith':
                     $params[] = '%' . $this->escapeLike((string) $v);
-                    $clauses[] = "{$col} LIKE ?";
+                    $clauses[] = "{$col} LIKE ?" . $driver->likeEscapeClause();
 
                     break;
 
@@ -233,19 +233,19 @@ final class WhereCompiler
 
                 case 'string_contains':
                     $params[] = '%' . $this->escapeLike((string) $v) . '%';
-                    $clauses[] = ($textExpr ??= $driver->jsonExtractText($col, $path)) . ' LIKE ?';
+                    $clauses[] = ($textExpr ??= $driver->jsonExtractText($col, $path)) . ' LIKE ?' . $driver->likeEscapeClause();
 
                     break;
 
                 case 'string_starts_with':
                     $params[] = $this->escapeLike((string) $v) . '%';
-                    $clauses[] = ($textExpr ??= $driver->jsonExtractText($col, $path)) . ' LIKE ?';
+                    $clauses[] = ($textExpr ??= $driver->jsonExtractText($col, $path)) . ' LIKE ?' . $driver->likeEscapeClause();
 
                     break;
 
                 case 'string_ends_with':
                     $params[] = '%' . $this->escapeLike((string) $v);
-                    $clauses[] = ($textExpr ??= $driver->jsonExtractText($col, $path)) . ' LIKE ?';
+                    $clauses[] = ($textExpr ??= $driver->jsonExtractText($col, $path)) . ' LIKE ?' . $driver->likeEscapeClause();
 
                     break;
 

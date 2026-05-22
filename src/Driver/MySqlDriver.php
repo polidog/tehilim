@@ -18,6 +18,11 @@ final class MySqlDriver extends AbstractPdoDriver
         return '`' . str_replace('`', '``', $name) . '`';
     }
 
+    public function supportsTransactionalDdl(): bool
+    {
+        return false;
+    }
+
     public function beginTransaction(?IsolationLevel $level = null): void
     {
         // MySQL: `SET TRANSACTION ISOLATION LEVEL ...` applies only to the

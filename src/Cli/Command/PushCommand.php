@@ -16,6 +16,11 @@ final class PushCommand
     public function run(array $args): int
     {
         $opts = Options::parse($args);
+        if (!isset($opts['extra']['force'])) {
+            fwrite(STDERR, "tehilim: 'push' drops and recreates tables, discarding all data. Re-run with --force to confirm.\n");
+
+            return 1;
+        }
         $schema = Parser::parseFile($opts['schema']);
 
         $ds = $schema->datasources[0] ?? null;

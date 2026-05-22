@@ -38,6 +38,22 @@ interface Driver
     public function quoteIdent(string $name): string;
 
     /**
+     * Whether DDL statements participate in transactions. False for MySQL,
+     * where each DDL statement triggers an implicit commit, so wrapping a
+     * migration in a transaction would give a false sense of atomicity. True
+     * for SQLite and PostgreSQL, which support transactional DDL.
+     */
+    public function supportsTransactionalDdl(): bool;
+
+    /**
+     * The ` ESCAPE '...'` suffix appended to LIKE clauses so the backslash the
+     * query compiler uses to escape `%`/`_`/`\` in user patterns is honored.
+     * Empty where the dialect's default LIKE escape is already a backslash
+     * (MySQL, PostgreSQL); SQLite has no default and must declare one.
+     */
+    public function likeEscapeClause(): string;
+
+    /**
      * SQL expression that extracts the value at $path from a JSON column as
      * text, for use in comparisons (`= ?`, `LIKE ?`, etc).
      *
