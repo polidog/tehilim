@@ -36,6 +36,18 @@ final class WhereCompilerTest extends TestCase
         );
     }
 
+    public function testJsonPathRejectedOnNonJsonColumn(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage("JSON 'path' filter is only valid on Json columns ('title' is string)");
+
+        $this->compiler()->compile(
+            ['title' => ['path' => ['a'], 'equals' => 'x']],
+            $this->driver(),
+            ['title' => 'string'],
+        );
+    }
+
     public function testJsonPathAcceptsIntSegments(): void
     {
         [$sql, $params] = $this->compiler()->compile(

@@ -96,6 +96,12 @@ final class WhereCompiler
         }
 
         if (array_key_exists('path', $value)) {
+            if ($type !== 'json') {
+                throw new InvalidArgumentException(
+                    "JSON 'path' filter is only valid on Json columns ('{$field}' is {$type})",
+                );
+            }
+
             return $this->compileJsonPath($col, $value, $driver, $params);
         }
 
