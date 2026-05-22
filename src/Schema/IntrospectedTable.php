@@ -15,14 +15,16 @@ namespace Polidog\Tehilim\Schema;
 final class IntrospectedTable
 {
     /**
-     * @param list<IntrospectedColumn> $columns
-     * @param null|list<string>        $compositePrimaryKey
-     * @param list<list<string>>       $compositeUniques
+     * @param list<IntrospectedColumn>     $columns
+     * @param null|list<string>            $compositePrimaryKey
+     * @param list<list<string>>           $compositeUniques
+     * @param list<IntrospectedForeignKey> $foreignKeys         single-column foreign keys
      */
     public function __construct(
         public readonly string $name,
         public readonly array $columns,
         public readonly ?array $compositePrimaryKey = null,
         public readonly array $compositeUniques = [],
+        public readonly array $foreignKeys = [],
     ) {}
 }
