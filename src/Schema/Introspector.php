@@ -105,18 +105,30 @@ final class Introspector
     {
         $out = [];
         foreach ($intro as $name => $it) {
-            if (count($it->columns) !== 2 || count($it->foreignKeys) !== 2) {
+            // Only fold tables matching tehilim's implicit-M2M shape: named
+            // `_XToY` with columns A and B forming the composite PK. Runtime
+            // resolution (RelationResolver::buildManyToMany) hard-codes that
+            // name and those columns, so a coincidentally-2-FK table with a
+            // different shape must stay an explicit model — folding it would
+            // drop it and emit relations that can't resolve at runtime.
+            if (preg_match('/^_.+To.+$/', $name) !== 1) {
                 continue;
             }
-            $pk = $it->compositePrimaryKey;
-            if ($pk === null || count($pk) !== 2) {
+            if (count($it->columns) !== 2 || count($it->foreignKeys) !== 2) {
                 continue;
             }
             $colNames = array_map(static fn ($c) => $c->name, $it->columns);
             sort($colNames);
+            if ($colNames !== ['A', 'B']) {
+                continue;
+            }
+            $pk = $it->compositePrimaryKey;
+            if ($pk === null) {
+                continue;
+            }
             $pkSorted = $pk;
             sort($pkSorted);
-            if ($colNames !== $pkSorted) {
+            if ($pkSorted !== ['A', 'B']) {
                 continue;
             }
 
@@ -124,8 +136,8 @@ final class Introspector
             foreach ($it->foreignKeys as $fk) {
                 $refByColumn[$fk->column] = $fk->referencedTable;
             }
-            $a = $refByColumn[$it->columns[0]->name] ?? null;
-            $b = $refByColumn[$it->columns[1]->name] ?? null;
+            $a = $refByColumn['A'] ?? null;
+            $b = $refByColumn['B'] ?? null;
             if ($a === null || $b === null) {
                 continue;
             }
@@ -164,6 +176,17 @@ final class Introspector
             if (isset($joinTables[$name])) {
                 continue;
             }
+
+            // Count FKs per referenced model: when a table holds 2+ FKs to the
+            // same target (e.g. Post.authorId + Post.editorId -> User), the
+            // inverse side is ambiguous because RelationResolver only matches
+            // the first inverse @relation on the target. Emit belongsTo for
+            // each, but skip the inverse for ambiguous pairs.
+            $refCounts = [];
+            foreach ($it->foreignKeys as $fk) {
+                $refCounts[$fk->referencedTable] = ($refCounts[$fk->referencedTable] ?? 0) + 1;
+            }
+
             foreach ($it->foreignKeys as $fk) {
                 $ref = $fk->referencedTable;
                 if (!$this->isModel($ref, $intro, $joinTables)) {
@@ -182,6 +205,10 @@ final class Introspector
                     $fk->referencedColumn,
                     $col->nullable,
                 );
+
+                if (($refCounts[$ref] ?? 0) > 1) {
+                    continue; // ambiguous inverse — belongsTo only
+                }
 
                 // Inverse on the referenced model: hasOne when the FK is unique
                 // (1:1), otherwise hasMany.

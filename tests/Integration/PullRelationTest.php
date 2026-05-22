@@ -88,6 +88,55 @@ final class PullRelationTest extends TestCase
         self::assertSame(['authorId'], $rel->args['fields']);
     }
 
+    public function testNonConventionalJoinTableStaysAModel(): void
+    {
+        // Structurally a join table (2 FK columns + composite PK), but NOT named
+        // `_XToY` with A/B columns, so it must remain an explicit model rather
+        // than be folded into an unresolvable implicit M2M.
+        $pdo = $this->pdo([
+            'CREATE TABLE "User" ("id" INTEGER PRIMARY KEY AUTOINCREMENT)',
+            'CREATE TABLE "Team" ("id" INTEGER PRIMARY KEY AUTOINCREMENT)',
+            'CREATE TABLE "Membership" ("userId" INTEGER NOT NULL REFERENCES "User"("id"), "teamId" INTEGER NOT NULL REFERENCES "Team"("id"), PRIMARY KEY ("userId", "teamId"))',
+        ]);
+
+        $schema = (new Introspector(new SqliteDriver($pdo)))->introspect();
+
+        $names = array_map(static fn ($m) => $m->name, $schema->models);
+        self::assertContains('Membership', $names, 'a non _XToY table must stay a model');
+
+        // It carries two belongsTo relations (to User and Team).
+        $membership = $this->model($schema, 'Membership');
+        self::assertNotNull($this->relationField($membership, 'User', list: false));
+        self::assertNotNull($this->relationField($membership, 'Team', list: false));
+    }
+
+    public function testMultipleForeignKeysToSameModelSkipInverse(): void
+    {
+        // Post has two FKs to User (authorId, editorId). Both become belongsTo,
+        // but no inverse is emitted on User — the inverse would be ambiguous.
+        $pdo = $this->pdo([
+            'CREATE TABLE "User" ("id" INTEGER PRIMARY KEY AUTOINCREMENT)',
+            'CREATE TABLE "Post" ("id" INTEGER PRIMARY KEY AUTOINCREMENT, "authorId" INTEGER NOT NULL REFERENCES "User"("id"), "editorId" INTEGER NOT NULL REFERENCES "User"("id"))',
+        ]);
+
+        $schema = (new Introspector(new SqliteDriver($pdo)))->introspect();
+
+        // Two belongsTo User on Post.
+        $post = $this->model($schema, 'Post');
+        $belongsCount = 0;
+        foreach ($post->fields as $f) {
+            if (!$f->type->isScalar() && $f->type->name === 'User' && !$f->list) {
+                ++$belongsCount;
+            }
+        }
+        self::assertSame(2, $belongsCount, 'both FKs become belongsTo');
+
+        // No inverse Post relation on User (ambiguous, so skipped).
+        $user = $this->model($schema, 'User');
+        self::assertNull($this->relationField($user, 'Post', list: true), 'ambiguous inverse must be skipped');
+        self::assertNull($this->relationField($user, 'Post', list: false));
+    }
+
     /**
      * @param list<string> $ddl
      */
