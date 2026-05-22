@@ -8,6 +8,7 @@ use PDO;
 use Polidog\Tehilim\Client\IsolationLevel;
 use Polidog\Tehilim\Migration\ColumnDef;
 use Polidog\Tehilim\Schema\IntrospectedColumn;
+use Polidog\Tehilim\Schema\IntrospectedForeignKey;
 use Polidog\Tehilim\Schema\IntrospectedTable;
 
 final class MySqlDriver extends AbstractPdoDriver
@@ -95,6 +96,7 @@ final class MySqlDriver extends AbstractPdoDriver
             $columns,
             count($pkCols) >= 2 ? $pkCols : null,
             $compositeUniques,
+            $this->foreignKeys($table),
         );
     }
 
@@ -166,6 +168,45 @@ final class MySqlDriver extends AbstractPdoDriver
             'blob', 'tinyblob', 'mediumblob', 'longblob', 'binary', 'varbinary' => 'Bytes',
             default => 'String',
         };
+    }
+
+    /**
+     * Single-column foreign keys (composite FKs are skipped).
+     *
+     * @return list<IntrospectedForeignKey>
+     */
+    private function foreignKeys(string $table): array
+    {
+        $stmt = $this->pdoInstance->prepare(
+            'SELECT constraint_name, column_name, referenced_table_name, referenced_column_name'
+            . ' FROM information_schema.key_column_usage'
+            . ' WHERE table_schema = DATABASE() AND table_name = ?'
+            . ' AND referenced_table_name IS NOT NULL'
+            . ' ORDER BY constraint_name, ordinal_position',
+        );
+        $stmt->execute([$table]);
+
+        /** @var list<array{constraint_name:string,column_name:string,referenced_table_name:string,referenced_column_name:string}> $rows */
+        $rows = $stmt->fetchAll();
+
+        $countByName = [];
+        foreach ($rows as $r) {
+            $countByName[$r['constraint_name']] = ($countByName[$r['constraint_name']] ?? 0) + 1;
+        }
+
+        $fks = [];
+        foreach ($rows as $r) {
+            if (($countByName[$r['constraint_name']] ?? 0) !== 1) {
+                continue; // composite FK
+            }
+            $fks[] = new IntrospectedForeignKey(
+                $r['column_name'],
+                $r['referenced_table_name'],
+                $r['referenced_column_name'],
+            );
+        }
+
+        return $fks;
     }
 
     /** @return list<string> primary key columns in order */

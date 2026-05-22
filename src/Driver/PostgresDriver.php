@@ -8,6 +8,7 @@ use PDO;
 use Polidog\Tehilim\Client\IsolationLevel;
 use Polidog\Tehilim\Migration\ColumnDef;
 use Polidog\Tehilim\Schema\IntrospectedColumn;
+use Polidog\Tehilim\Schema\IntrospectedForeignKey;
 use Polidog\Tehilim\Schema\IntrospectedTable;
 use RuntimeException;
 use Throwable;
@@ -116,6 +117,7 @@ final class PostgresDriver extends AbstractPdoDriver
             $columns,
             count($pkCols) >= 2 ? $pkCols : null,
             $compositeUniques,
+            $this->foreignKeys($table),
         );
     }
 
@@ -201,6 +203,50 @@ final class PostgresDriver extends AbstractPdoDriver
             'bytea' => 'Bytes',
             default => 'String',
         };
+    }
+
+    /**
+     * Single-column foreign keys (composite FKs are skipped).
+     *
+     * @return list<IntrospectedForeignKey>
+     */
+    private function foreignKeys(string $table): array
+    {
+        $stmt = $this->pdoInstance->prepare(
+            'SELECT tc.constraint_name, kcu.column_name,'
+            . ' ccu.table_name AS referenced_table, ccu.column_name AS referenced_column'
+            . ' FROM information_schema.table_constraints tc'
+            . ' JOIN information_schema.key_column_usage kcu'
+            . ' ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema'
+            . ' JOIN information_schema.constraint_column_usage ccu'
+            . ' ON tc.constraint_name = ccu.constraint_name AND tc.table_schema = ccu.table_schema'
+            . ' WHERE tc.table_schema = ANY (current_schemas(false))'
+            . " AND tc.table_name = ? AND tc.constraint_type = 'FOREIGN KEY'"
+            . ' ORDER BY tc.constraint_name, kcu.ordinal_position',
+        );
+        $stmt->execute([$table]);
+
+        /** @var list<array{constraint_name:string,column_name:string,referenced_table:string,referenced_column:string}> $rows */
+        $rows = $stmt->fetchAll();
+
+        $countByName = [];
+        foreach ($rows as $r) {
+            $countByName[$r['constraint_name']] = ($countByName[$r['constraint_name']] ?? 0) + 1;
+        }
+
+        $fks = [];
+        foreach ($rows as $r) {
+            if (($countByName[$r['constraint_name']] ?? 0) !== 1) {
+                continue; // composite FK
+            }
+            $fks[] = new IntrospectedForeignKey(
+                $r['column_name'],
+                $r['referenced_table'],
+                $r['referenced_column'],
+            );
+        }
+
+        return $fks;
     }
 
     /**

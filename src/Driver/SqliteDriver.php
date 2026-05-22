@@ -8,6 +8,7 @@ use PDO;
 use Polidog\Tehilim\Client\IsolationLevel;
 use Polidog\Tehilim\Migration\ColumnDef;
 use Polidog\Tehilim\Schema\IntrospectedColumn;
+use Polidog\Tehilim\Schema\IntrospectedForeignKey;
 use Polidog\Tehilim\Schema\IntrospectedTable;
 use RuntimeException;
 
@@ -131,6 +132,7 @@ final class SqliteDriver extends AbstractPdoDriver
             $columns,
             count($pkCols) >= 2 ? $pkCols : null,
             $compositeUniques,
+            $this->foreignKeys($table),
         );
     }
 
@@ -198,6 +200,38 @@ final class SqliteDriver extends AbstractPdoDriver
             str_contains($t, 'BLOB') => 'Bytes',
             default => 'String',
         };
+    }
+
+    /**
+     * Single-column foreign keys. Composite FKs (multiple rows sharing an `id`)
+     * are skipped — relations are single-column in tehilim.
+     *
+     * @return list<IntrospectedForeignKey>
+     */
+    private function foreignKeys(string $table): array
+    {
+        $stmt = $this->pdoInstance->prepare(
+            'SELECT id, "table", "from", "to" FROM pragma_foreign_key_list(?)',
+        );
+        $stmt->execute([$table]);
+
+        /** @var list<array{id:int|string,table:string,from:string,to:string}> $rows */
+        $rows = $stmt->fetchAll();
+
+        $countById = [];
+        foreach ($rows as $r) {
+            $countById[$r['id']] = ($countById[$r['id']] ?? 0) + 1;
+        }
+
+        $fks = [];
+        foreach ($rows as $r) {
+            if (($countById[$r['id']] ?? 0) !== 1) {
+                continue; // composite FK
+            }
+            $fks[] = new IntrospectedForeignKey($r['from'], $r['table'], $r['to']);
+        }
+
+        return $fks;
     }
 
     /**

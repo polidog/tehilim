@@ -95,15 +95,26 @@ only the models are regenerated. It connects via the schema's datasource (or
 composite `@@id`), uniques (single + composite `@@unique`), and
 auto-increment.
 
+Relations are inferred from foreign keys: each FK becomes a `belongsTo`
+(`@relation(fields, references)`) with the inverse `hasMany` — or `hasOne`
+when the FK column is unique — on the referenced model. A `_XToY`-shaped join
+table (two FK columns forming a composite PK) is folded into an implicit
+many-to-many on both sides, and the join table itself is dropped from the
+output.
+
 Caveats:
 
-- **Relations are not inferred yet.** Foreign keys aren't turned into
-  `@relation`, and implicit many-to-many join tables surface as plain models.
-  (Planned for a follow-up.)
+- **FK constraints must exist in the DB.** Relations come from foreign keys, so
+  pull only recovers them when the database actually declares them. tehilim's
+  own `push` does not emit FK constraints yet, so a database created by `push`
+  won't have relations to recover (emitting FKs on `push` is a separate
+  follow-up).
 - **SQLite is lossy.** Its type affinity only distinguishes
   INTEGER/REAL/TEXT/BLOB, so `DateTime`, `Json`, `Boolean`, and `BigInt`
   columns come back as `Int`/`String`. MySQL and PostgreSQL carry enough type
   information to recover these faithfully.
+- Inferred field names are mechanical (referenced model name; pluralized with a
+  trailing `s`), so you may want to rename some after pulling.
 
 ## Connecting
 
@@ -595,10 +606,10 @@ v0.1 — usable for prototyping and small apps. Implemented:
 - `transaction()` with nested SAVEPOINTs and `Rollback`
 - Opt-in request-scoped cache (auto-flush on writes)
 - File-based migration history (`migrate dev` / `deploy` / `status` / `reset`)
-- Database introspection (`pull`) — tables, types, keys, uniques (no relations yet)
+- Database introspection (`pull`) — tables, types, keys, uniques, and FK-based relations
 - SQLite, MySQL/MariaDB, PostgreSQL drivers
 
-Not yet: full-text search; relation/FK inference during `db pull`. For raw
+Not yet: full-text search; emitting FK constraints on `push`. For raw
 SQL, drop down to PDO via `$client->driver->pdo()` (or
 `TehilimClient::fromPdo()`).
 
