@@ -822,7 +822,7 @@ abstract class BaseModelClient
     {
         $hash = $args |> serialize(...) |> md5(...);
 
-        return "{$this->table()}:{$op}:{$hash}";
+        return static::class . ":{$this->table()}:{$op}:{$hash}";
     }
 
     /**

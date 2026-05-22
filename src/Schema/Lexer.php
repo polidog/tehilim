@@ -167,6 +167,7 @@ final class Lexer
 
     private function skipBlockComment(): void
     {
+        $startLine = $this->line;
         $this->pos += 2;
         while ($this->pos < $this->len) {
             if ($this->source[$this->pos] === '*' && $this->peek(1) === '/') {
@@ -179,6 +180,8 @@ final class Lexer
             }
             ++$this->pos;
         }
+
+        throw new ParseException('Unterminated block comment', $startLine);
     }
 
     private function peek(int $offset): string

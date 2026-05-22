@@ -156,22 +156,37 @@ final class Migrator
     /** @param list<string> $statements */
     private function applyStatements(array $statements): void
     {
+        // MySQL auto-commits each DDL statement, so a wrapping transaction
+        // cannot roll a half-applied migration back. Run statements directly
+        // there rather than pretend the apply is atomic.
+        if (!$this->driver->supportsTransactionalDdl()) {
+            $this->runStatements($statements);
+
+            return;
+        }
+
         $pdo = $this->driver->pdo();
         $pdo->beginTransaction();
 
         try {
-            foreach ($statements as $sql) {
-                $trim = trim($sql);
-                if ($trim === '' || str_starts_with($trim, '--')) {
-                    continue;
-                }
-                $this->run($sql);
-            }
+            $this->runStatements($statements);
             $pdo->commit();
         } catch (Throwable $e) {
             $pdo->rollBack();
 
             throw $e;
+        }
+    }
+
+    /** @param list<string> $statements */
+    private function runStatements(array $statements): void
+    {
+        foreach ($statements as $sql) {
+            $trim = trim($sql);
+            if ($trim === '' || str_starts_with($trim, '--')) {
+                continue;
+            }
+            $this->run($sql);
         }
     }
 

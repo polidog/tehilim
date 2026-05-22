@@ -45,7 +45,7 @@ TXT);
 
         // Create the database from the schema.
         ob_start();
-        $pushCode = $app->run(['tehilim', 'push', '--schema', $schemaPath]);
+        $pushCode = $app->run(['tehilim', 'push', '--force', '--schema', $schemaPath]);
         ob_end_clean();
         self::assertSame(0, $pushCode);
 
@@ -60,5 +60,29 @@ TXT);
         self::assertStringContainsString('id Int @id @default(autoincrement())', $out);
         self::assertStringContainsString('title String @unique', $out);
         self::assertStringContainsString('body String?', $out);
+    }
+
+    public function testPushWithoutForceIsRejected(): void
+    {
+        $schemaPath = $this->workDir . '/schema.tehilim';
+        file_put_contents($schemaPath, <<<'TXT'
+datasource db {
+  provider = "sqlite"
+  url      = "sqlite:dev.sqlite"
+}
+
+model Note {
+  id Int @id @default(autoincrement())
+}
+TXT);
+
+        $app = new Application();
+
+        ob_start();
+        $code = $app->run(['tehilim', 'push', '--schema', $schemaPath]);
+        ob_end_clean();
+
+        self::assertSame(1, $code);
+        self::assertFileDoesNotExist($this->workDir . '/dev.sqlite');
     }
 }

@@ -88,6 +88,11 @@ final class MigrateCommand
     private function reset(array $args): int
     {
         $opts = Options::parse($args);
+        if (!isset($opts['extra']['force'])) {
+            fwrite(STDERR, "tehilim: 'migrate reset' drops every table and re-applies all migrations. Re-run with --force to confirm.\n");
+
+            return 1;
+        }
         $this->migrator($opts['schema'])->reset();
         echo "Database reset and migrations re-applied.\n";
 
@@ -118,8 +123,11 @@ final class MigrateCommand
             return $url;
         }
         $base = dirname(realpath($schemaPath) ?: $schemaPath);
+        // Strip only a single leading "./" — ltrim($path, './') would treat
+        // "./" as a character mask and corrupt "../foo" into "foo".
+        $rel = str_starts_with($path, './') ? substr($path, 2) : $path;
 
-        return 'sqlite:' . $base . '/' . ltrim($path, './');
+        return 'sqlite:' . $base . '/' . $rel;
     }
 
     private function help(): int
@@ -129,7 +137,7 @@ Usage:
   tehilim migrate dev     --name <slug> [--schema <path>]  Diff, write, and apply a new migration
   tehilim migrate deploy  [--schema <path>]                Apply unapplied migrations
   tehilim migrate status  [--schema <path>]                Show applied / pending
-  tehilim migrate reset   [--schema <path>]                Drop everything and re-apply (DEV ONLY)
+  tehilim migrate reset   --force [--schema <path>]        Drop everything and re-apply (DEV ONLY)
 
 TXT;
 

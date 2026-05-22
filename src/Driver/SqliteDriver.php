@@ -19,6 +19,13 @@ final class SqliteDriver extends AbstractPdoDriver
         return '"' . str_replace('"', '""', $name) . '"';
     }
 
+    public function likeEscapeClause(): string
+    {
+        // SQLite has no default LIKE escape character, so the backslash the
+        // WhereCompiler uses to escape %/_/\ must be declared explicitly.
+        return " ESCAPE '\\'";
+    }
+
     public function beginTransaction(?IsolationLevel $level = null): void
     {
         // SQLite serializes write transactions and offers SERIALIZABLE-grade
