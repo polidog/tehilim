@@ -98,9 +98,9 @@ final class RawShape
      * key) is rejected here rather than failing later with a confusing
      * "no such column '0'" error.
      *
-     * @param array<array-key,string> $shape
+     * @param array<array-key,mixed> $shape
      *
-     * @throws InvalidArgumentException on the first bad key or unknown tag
+     * @throws InvalidArgumentException on the first bad key, non-string tag, or unknown tag
      */
     public static function validate(array $shape): void
     {
@@ -109,6 +109,13 @@ final class RawShape
                 throw new InvalidArgumentException(sprintf(
                     'queryRaw shape must map column names to type tags, e.g. [\'id\' => \'int\']; got key %s.',
                     var_export($column, true),
+                ));
+            }
+            if (!is_string($tag)) {
+                throw new InvalidArgumentException(sprintf(
+                    "queryRaw shape tag for column '%s' must be a string such as 'int' or '?string'; got %s.",
+                    $column,
+                    get_debug_type($tag),
                 ));
             }
             if (!self::isKnown($tag)) {

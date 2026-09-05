@@ -92,6 +92,16 @@ final class RawQueryTest extends TestCase
         $db->queryRaw('SELECT * FROM "NoSuchTable"', [], ['int', 'string']);
     }
 
+    public function testNonStringTagIsRejectedBeforeExecuting(): void
+    {
+        [$db] = $this->makeClient('RawNonStringTag');
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage("tag for column 'id' must be a string such as 'int' or '?string'; got int");
+        /** @phpstan-ignore argument.type (deliberately malformed shape) */
+        $db->queryRaw('SELECT * FROM "NoSuchTable"', [], ['id' => 123]);
+    }
+
     public function testPositionalAndNamedParamsWithBoolAndDateTimeNormalization(): void
     {
         [$db] = $this->makeClient('RawParams');
