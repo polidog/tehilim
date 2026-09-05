@@ -126,9 +126,11 @@ abstract class BaseModelClient
     }
 
     /**
-     * Run a hand-written SELECT whose result columns are this model's
-     * columns. Every column known to the model is cast to its schema type;
-     * columns the model does not know about are passed through untouched.
+     * Run a hand-written SELECT and cast the result like model rows: every
+     * column the model knows is cast to its schema type, anything else is
+     * passed through untouched. Nothing checks that the SELECT actually
+     * returns all (or only) model columns — the generated `queryRaw()` types
+     * the result as a full model row, so that is the caller's responsibility.
      * Bypasses the request cache and does not resolve `include`.
      *
      * @param array<string,mixed>|list<mixed> $params

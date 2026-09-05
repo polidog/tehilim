@@ -459,7 +459,10 @@ foreach ($stats as $row) {
 $users = $db->user->queryRaw('SELECT * FROM "User" WHERE name LIKE ? ORDER BY id', ['A%']);
 
 // 3. 書き込み / DDL — 影響行数を返し、リクエストキャッシュをフラッシュする。
-$n = $db->executeRaw('UPDATE "Post" SET published = ? WHERE "authorId" = :author', [true, 'author' => 1]);
+$n = $db->executeRaw(
+    'UPDATE "Post" SET published = :published WHERE "authorId" = :author',
+    ['published' => true, 'author' => 1],
+);
 ```
 
 ### shape の型タグ

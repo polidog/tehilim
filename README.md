@@ -554,7 +554,10 @@ foreach ($stats as $row) {
 $users = $db->user->queryRaw('SELECT * FROM "User" WHERE name LIKE ? ORDER BY id', ['A%']);
 
 // 3. Writes / DDL — returns the affected row count and flushes the request cache.
-$n = $db->executeRaw('UPDATE "Post" SET published = ? WHERE "authorId" = :author', [true, 'author' => 1]);
+$n = $db->executeRaw(
+    'UPDATE "Post" SET published = :published WHERE "authorId" = :author',
+    ['published' => true, 'author' => 1],
+);
 ```
 
 ### Shape type tags

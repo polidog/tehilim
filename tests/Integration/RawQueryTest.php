@@ -83,6 +83,15 @@ final class RawQueryTest extends TestCase
         $db->queryRaw('SELECT * FROM "NoSuchTable"', [], ['id' => 'itn']);
     }
 
+    public function testListShapeIsRejectedBeforeExecuting(): void
+    {
+        [$db] = $this->makeClient('RawListShape');
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('shape must map column names to type tags');
+        $db->queryRaw('SELECT * FROM "NoSuchTable"', [], ['int', 'string']);
+    }
+
     public function testPositionalAndNamedParamsWithBoolAndDateTimeNormalization(): void
     {
         [$db] = $this->makeClient('RawParams');

@@ -93,13 +93,24 @@ final class RawShape
     }
 
     /**
-     * @param array<string,string> $shape
+     * Shapes must map column names to tags. A list such as `['int', 'string']`
+     * (or a numeric-string column name, which PHP silently turns into an int
+     * key) is rejected here rather than failing later with a confusing
+     * "no such column '0'" error.
      *
-     * @throws InvalidArgumentException on the first unknown tag
+     * @param array<array-key,string> $shape
+     *
+     * @throws InvalidArgumentException on the first bad key or unknown tag
      */
     public static function validate(array $shape): void
     {
         foreach ($shape as $column => $tag) {
+            if (!is_string($column) || $column === '') {
+                throw new InvalidArgumentException(sprintf(
+                    'queryRaw shape must map column names to type tags, e.g. [\'id\' => \'int\']; got key %s.',
+                    var_export($column, true),
+                ));
+            }
             if (!self::isKnown($tag)) {
                 throw new InvalidArgumentException(self::unknownTagMessage($tag, $column));
             }
