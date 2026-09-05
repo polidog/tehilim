@@ -525,11 +525,80 @@ $db->withProfiler(null);  // clear
 - Zero overhead when no profiler is registered (a single nullable
   property check).
 
+## Raw SQL
+
+When the query builder runs out (joins, aggregates, window functions,
+dialect-specific syntax), write the SQL yourself. There are three entry
+points, all bound through PDO prepared statements:
+
+```php
+// 1. Ad-hoc projection with a declared shape.
+//    The shape drives BOTH the runtime cast and the PHPStan type.
+$stats = $db->queryRaw(
+    'SELECT u.id, u.name, COUNT(p.id) AS posts, MAX(p."createdAt") AS latest
+       FROM "User" u LEFT JOIN "Post" p ON p."authorId" = u.id
+      WHERE u."createdAt" > ?
+      GROUP BY u.id, u.name',
+    [new DateTimeImmutable('-30 days')],
+    ['id' => 'int', 'name' => '?string', 'posts' => 'int', 'latest' => '?DateTime'],
+);
+// PHPStan sees: list<array{id: int, name: string|null, posts: int, latest: DateTimeImmutable|null}>
+foreach ($stats as $row) {
+    echo $row['posts'];        // ✓ int
+    echo $row['latest']?->format('Y-m-d'); // ✓ DateTimeImmutable|null
+    echo $row['nope'];         // ✗ PHPStan error: not a key of the shape
+}
+
+// 2. Model rows through custom SQL — cast with the model's column types,
+//    typed as list<UserRow>. No shape needed.
+$users = $db->user->queryRaw('SELECT * FROM "User" WHERE name LIKE ? ORDER BY id', ['A%']);
+
+// 3. Writes / DDL — returns the affected row count and flushes the request cache.
+$n = $db->executeRaw(
+    'UPDATE "Post" SET published = :published WHERE "authorId" = :author',
+    ['published' => true, 'author' => 1],
+);
+```
+
+### Shape type tags
+
+| Tag | Runtime value | PHPStan type |
+|---|---|---|
+| `int`, `BigInt` | `int` | `int` |
+| `float` | `float` | `float` |
+| `bool` | `bool` | `bool` |
+| `string`, `bytes` | `string` | `string` |
+| `DateTime` | `DateTimeImmutable` | `DateTimeImmutable` |
+| `json` | decoded JSON | `mixed` |
+| `mixed` | untouched | `mixed` |
+
+Prefix any tag with `?` for a nullable column (`'?int'` → `int|null`). These
+are the same tags the generated clients use for schema columns, so a shaped
+raw row and a `findMany` row agree on every value's PHP type.
+
+Rules of the road:
+
+- **The result is exactly the shape.** Columns the SELECT returns but the
+  shape does not list are dropped; a shape column the SELECT does *not*
+  return throws a `RuntimeException` naming it. Typos fail fast on both sides.
+- **Unknown tags fail statically.** The bundled PHPStan rule reports
+  `Unknown tehilim raw type tag 'itn' for column 'id'` before the code ever
+  runs; at runtime the same mistake throws `InvalidArgumentException`.
+- **Only a literal shape narrows.** A shape built at runtime falls back to
+  `list<array<string,mixed>>`, as does calling `queryRaw` with no shape.
+- Bind values go to PDO as-is except `bool` and `DateTimeInterface`, which
+  are normalized through the driver like generated-client writes. Positional
+  `?` and named `:name` placeholders both work.
+- Table and column names are not quoted for you — quote them for your
+  dialect (`"User"` on SQLite/PostgreSQL, `` `User` `` on MySQL).
+
 ## PHPStan extension
 
 Tehilim ships a PHPStan extension at the package root (`extension.neon`)
-that **narrows the return type of `findUnique` / `findFirst` / `findMany`**
-when the caller passes a literal `select` argument:
+that does two things: it **narrows the return type of `findUnique` /
+`findFirst` / `findMany`** when the caller passes a literal `select`
+argument, and it **types `queryRaw` from its literal shape** (see
+[Raw SQL](#raw-sql)) while reporting unknown type tags as errors.
 
 ```php
 $row = $db->user->findUnique([
@@ -593,8 +662,9 @@ $row = $db->user->findUnique(['where' => ['id' => 1], 'select' => ['email']]);
 assertType('array{email: string, id: int}|null', $row);
 ```
 
-PHPStan's own test suite for the extension lives at
-`tests/PHPStan/SelectNarrowingTest.php` if you want a reference.
+PHPStan's own test suites for the extension live under `tests/PHPStan/`
+(`SelectNarrowingTest`, `QueryRawNarrowingTest`, `QueryRawShapeRuleTest`)
+if you want a reference.
 
 ## Status
 
@@ -613,8 +683,10 @@ v0.1 — usable for prototyping and small apps. Implemented:
 - Database introspection (`pull`) — tables, types, keys, uniques, and FK-based relations
 - SQLite, MySQL/MariaDB, PostgreSQL drivers
 
-Not yet: full-text search; emitting FK constraints on `push`. For raw
-SQL, drop down to PDO via `$client->driver->pdo()` (or
+- Raw SQL: `queryRaw` with a PHPStan-checked shape, model-level `queryRaw`, `executeRaw`
+
+Not yet: full-text search. For anything the raw API does not cover, the
+underlying PDO is available via `$client->driver->pdo()` (or
 `TehilimClient::fromPdo()`).
 
 ## License

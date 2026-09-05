@@ -317,6 +317,22 @@ final class {$name} extends BaseModelClient
     }
 
     /**
+     * Run a hand-written SELECT and treat each row as a {$name} row. Known
+     * columns are cast to their schema types; extra columns pass through but
+     * are invisible to PHPStan. The SELECT is not checked against the model —
+     * the `list<{$name}Row>` type is only as true as your column list (use
+     * `SELECT *` or list every column). For joins, aggregates and other
+     * ad-hoc projections use `\$db->queryRaw(\$sql, \$params, \$shape)`.
+     *
+     * @param list<mixed>|array<string,mixed> \$params
+     * @return list<{$name}Row>
+     */
+    public function queryRaw(string \$sql, array \$params = []): array
+    {
+        return \$this->narrowRows(\$this->doQueryRaw(\$sql, \$params));
+    }
+
+    /**
      * @param array<string,mixed> \$row
      * @return {$name}Row
      */

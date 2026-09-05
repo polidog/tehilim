@@ -8,6 +8,7 @@ use InvalidArgumentException;
 use LogicException;
 use Polidog\Tehilim\Cache\RequestCache;
 use Polidog\Tehilim\Driver\Driver;
+use Polidog\Tehilim\Query\RawQuery;
 use Polidog\Tehilim\Query\WhereCompiler;
 use RuntimeException;
 
@@ -27,11 +28,13 @@ abstract class BaseModelClient
     protected ?BaseClient $root = null;
 
     private readonly WhereCompiler $whereCompiler;
+    private readonly RawQuery $raw;
     private bool $useCache = false;
 
     public function __construct(protected readonly Driver $driver)
     {
         $this->whereCompiler = new WhereCompiler();
+        $this->raw = new RawQuery($driver);
     }
 
     public function bindRoot(BaseClient $root): void
@@ -116,6 +119,35 @@ abstract class BaseModelClient
             $out = $this->execFindMany($args);
             if ($cache !== null && $cacheKey !== null) {
                 $cache->set($cacheKey, $out);
+            }
+
+            return $out;
+        });
+    }
+
+    /**
+     * Run a hand-written SELECT and cast the result like model rows: every
+     * column the model knows is cast to its schema type, anything else is
+     * passed through untouched. Nothing checks that the SELECT actually
+     * returns all (or only) model columns — the generated `queryRaw()` types
+     * the result as a full model row, so that is the caller's responsibility.
+     * Bypasses the request cache and does not resolve `include`.
+     *
+     * @param array<string,mixed>|list<mixed> $params
+     *
+     * @return list<array<string,mixed>>
+     */
+    protected function doQueryRaw(string $sql, array $params = []): array
+    {
+        return $this->profile('queryRaw', function () use ($sql, $params): array {
+            $types = $this->columnTypes();
+            $out = [];
+            foreach ($this->raw->fetchAll($sql, $params) as $row) {
+                $cast = [];
+                foreach ($row as $col => $val) {
+                    $cast[$col] = isset($types[$col]) ? $this->driver->cast($types[$col], $val) : $val;
+                }
+                $out[] = $cast;
             }
 
             return $out;

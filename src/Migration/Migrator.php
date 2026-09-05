@@ -136,7 +136,7 @@ final class Migrator
         $stmt->execute();
         $rows = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
-        return array_map(strval(...), $rows);
+        return array_values(array_map(strval(...), $rows));
     }
 
     private function ensureTracking(): void

@@ -82,7 +82,7 @@ final class SqliteDriver extends AbstractPdoDriver
         $stmt->execute();
         $rows = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
-        return array_map(strval(...), $rows);
+        return array_values(array_map(strval(...), $rows));
     }
 
     public function introspectTable(string $table): IntrospectedTable

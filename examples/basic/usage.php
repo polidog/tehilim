@@ -64,3 +64,16 @@ $slim = $db->user->findMany([
 ]);
 var_export($slim);
 echo "\n";
+
+echo "\n-- raw SQL with a PHPStan-checked shape --\n";
+$stats = $db->queryRaw(
+    'SELECT u.name, COUNT(p.id) AS posts
+       FROM "User" u LEFT JOIN "Post" p ON p."authorId" = u.id AND p.published = ?
+      GROUP BY u.id, u.name ORDER BY u.id',
+    [true],
+    ['name' => '?string', 'posts' => 'int'],
+);
+// PHPStan sees list<array{name: string|null, posts: int}>
+foreach ($stats as $row) {
+    echo ($row['name'] ?? '(anonymous)') . ": {$row['posts']} published\n";
+}
