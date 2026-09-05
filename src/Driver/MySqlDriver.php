@@ -61,7 +61,7 @@ final class MySqlDriver extends AbstractPdoDriver
         $stmt->execute();
         $rows = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
-        return array_map(strval(...), $rows);
+        return array_values(array_map(strval(...), $rows));
     }
 
     public function introspectTable(string $table): IntrospectedTable
@@ -224,7 +224,7 @@ final class MySqlDriver extends AbstractPdoDriver
         );
         $stmt->execute([$table]);
 
-        return array_map(strval(...), $stmt->fetchAll(PDO::FETCH_COLUMN));
+        return array_values(array_map(strval(...), $stmt->fetchAll(PDO::FETCH_COLUMN)));
     }
 
     /**
