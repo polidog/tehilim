@@ -8,6 +8,7 @@ use InvalidArgumentException;
 use LogicException;
 use Polidog\Tehilim\Cache\RequestCache;
 use Polidog\Tehilim\Driver\Driver;
+use Polidog\Tehilim\Query\RawQuery;
 use Polidog\Tehilim\Query\WhereCompiler;
 use RuntimeException;
 
@@ -27,11 +28,13 @@ abstract class BaseModelClient
     protected ?BaseClient $root = null;
 
     private readonly WhereCompiler $whereCompiler;
+    private readonly RawQuery $raw;
     private bool $useCache = false;
 
     public function __construct(protected readonly Driver $driver)
     {
         $this->whereCompiler = new WhereCompiler();
+        $this->raw = new RawQuery($driver);
     }
 
     public function bindRoot(BaseClient $root): void
@@ -116,6 +119,33 @@ abstract class BaseModelClient
             $out = $this->execFindMany($args);
             if ($cache !== null && $cacheKey !== null) {
                 $cache->set($cacheKey, $out);
+            }
+
+            return $out;
+        });
+    }
+
+    /**
+     * Run a hand-written SELECT whose result columns are this model's
+     * columns. Every column known to the model is cast to its schema type;
+     * columns the model does not know about are passed through untouched.
+     * Bypasses the request cache and does not resolve `include`.
+     *
+     * @param array<string,mixed>|list<mixed> $params
+     *
+     * @return list<array<string,mixed>>
+     */
+    protected function doQueryRaw(string $sql, array $params = []): array
+    {
+        return $this->profile('queryRaw', function () use ($sql, $params): array {
+            $types = $this->columnTypes();
+            $out = [];
+            foreach ($this->raw->fetchAll($sql, $params) as $row) {
+                $cast = [];
+                foreach ($row as $col => $val) {
+                    $cast[$col] = isset($types[$col]) ? $this->driver->cast($types[$col], $val) : $val;
+                }
+                $out[] = $cast;
             }
 
             return $out;

@@ -432,9 +432,61 @@ $db->withProfiler(null);  // 解除
 - **キャッシュヒット時は profiler を呼ばない** — 実際に DB に行った操作だけが記録されます。
 - プロファイラ未設定時はゼロオーバーヘッド (nullable プロパティのチェック 1 回のみ)。
 
+## 生 SQL
+
+クエリビルダで表現しきれないとき (JOIN、集約、ウィンドウ関数、方言固有の構文) は SQL を直接書けます。入口は3つで、いずれも PDO のプリペアドステートメント経由でバインドします:
+
+```php
+// 1. shape を宣言した ad-hoc な射影。
+//    shape が「ランタイムのキャスト」と「PHPStan の型」の両方を駆動する。
+$stats = $db->queryRaw(
+    'SELECT u.id, u.name, COUNT(p.id) AS posts, MAX(p."createdAt") AS latest
+       FROM "User" u LEFT JOIN "Post" p ON p."authorId" = u.id
+      WHERE u."createdAt" > ?
+      GROUP BY u.id, u.name',
+    [new DateTimeImmutable('-30 days')],
+    ['id' => 'int', 'name' => '?string', 'posts' => 'int', 'latest' => '?DateTime'],
+);
+// PHPStan からの見え方: list<array{id: int, name: string|null, posts: int, latest: DateTimeImmutable|null}>
+foreach ($stats as $row) {
+    echo $row['posts'];        // ✓ int
+    echo $row['latest']?->format('Y-m-d'); // ✓ DateTimeImmutable|null
+    echo $row['nope'];         // ✗ PHPStan エラー: shape に存在しないキー
+}
+
+// 2. 独自 SQL でモデルの行を取る — モデルのカラム型でキャストされ、
+//    list<UserRow> として型付けされる。shape は不要。
+$users = $db->user->queryRaw('SELECT * FROM "User" WHERE name LIKE ? ORDER BY id', ['A%']);
+
+// 3. 書き込み / DDL — 影響行数を返し、リクエストキャッシュをフラッシュする。
+$n = $db->executeRaw('UPDATE "Post" SET published = ? WHERE "authorId" = :author', [true, 'author' => 1]);
+```
+
+### shape の型タグ
+
+| タグ | ランタイムの値 | PHPStan の型 |
+|---|---|---|
+| `int`, `BigInt` | `int` | `int` |
+| `float` | `float` | `float` |
+| `bool` | `bool` | `bool` |
+| `string`, `bytes` | `string` | `string` |
+| `DateTime` | `DateTimeImmutable` | `DateTimeImmutable` |
+| `json` | デコード済み JSON | `mixed` |
+| `mixed` | そのまま | `mixed` |
+
+nullable なカラムはタグの先頭に `?` を付けます (`'?int'` → `int|null`)。生成クライアントがスキーマのカラムに使っているのと同じタグなので、shape 付きの生 SQL 行と `findMany` の行で値の PHP 型が一致します。
+
+ルール:
+
+- **結果は shape そのもの。** SELECT が返しても shape に無いカラムは落とされ、shape にあるのに SELECT が返さないカラムはそのカラム名を含む `RuntimeException` になります。どちら向きのタイポも即座に失敗します。
+- **未知のタグは静的に失敗。** 同梱の PHPStan ルールが実行前に `Unknown tehilim raw type tag 'itn' for column 'id'` を報告します。ランタイムでも同じミスは `InvalidArgumentException` になります。
+- **narrow されるのはリテラルの shape のみ。** 実行時に組み立てた shape や、shape 無しの `queryRaw` は `list<array<string,mixed>>` に戻ります。
+- バインド値は `bool` と `DateTimeInterface` 以外はそのまま PDO に渡します。この2つは生成クライアントの書き込みと同様にドライバ経由で正規化されます。位置 (`?`) と名前付き (`:name`) のプレースホルダはどちらも使えます。
+- テーブル名・カラム名はクォートされません。方言に合わせて自分でクォートしてください (SQLite/PostgreSQL は `"User"`、MySQL は `` `User` ``)。
+
 ## PHPStan 拡張
 
-Tehilim はパッケージ直下に PHPStan 拡張 (`extension.neon`) を同梱しています。リテラルの `select` を渡すと **`findUnique` / `findFirst` / `findMany` の戻り値型を絞り込みます**:
+Tehilim はパッケージ直下に PHPStan 拡張 (`extension.neon`) を同梱しています。役割は2つ: リテラルの `select` を渡したときに **`findUnique` / `findFirst` / `findMany` の戻り値型を絞り込む**ことと、**`queryRaw` をリテラルの shape から型付けし**、未知の型タグをエラーとして報告すること ([生 SQL](#生-sql) 参照) です。
 
 ```php
 $row = $db->user->findUnique([
@@ -490,7 +542,7 @@ $row = $db->user->findUnique(['where' => ['id' => 1], 'select' => ['email']]);
 assertType('array{email: string, id: int}|null', $row);
 ```
 
-拡張自身のテストは `tests/PHPStan/SelectNarrowingTest.php` にあるので、参考にどうぞ。
+拡張自身のテストは `tests/PHPStan/` 配下 (`SelectNarrowingTest`、`QueryRawNarrowingTest`、`QueryRawShapeRuleTest`) にあるので、参考にどうぞ。
 
 ## ステータス
 
@@ -509,7 +561,9 @@ v0.1 — プロトタイピングや小規模アプリで使える状態。実�
 - DB introspection (`pull`) — テーブル・型・キー・unique・FK ベースのリレーションを復元
 - SQLite、MySQL/MariaDB、PostgreSQL ドライバ
 
-未対応: 全文検索、`push` での FK 制約発行。生 SQL を発行したいときは `$client->driver->pdo()` (または `TehilimClient::fromPdo()`) で PDO を直接使う。
+- 生 SQL: PHPStan で検査される shape 付きの `queryRaw`、モデル単位の `queryRaw`、`executeRaw`
+
+未対応: 全文検索。生 SQL API でも足りないときは `$client->driver->pdo()` (または `TehilimClient::fromPdo()`) で PDO を直接使う。
 
 ## ライセンス
 

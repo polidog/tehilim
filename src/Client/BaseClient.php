@@ -10,6 +10,8 @@ use LogicException;
 use PDO;
 use Polidog\Tehilim\Cache\RequestCache;
 use Polidog\Tehilim\Driver\Driver;
+use Polidog\Tehilim\Query\RawQuery;
+use Polidog\Tehilim\Query\RawShape;
 use Throwable;
 
 abstract class BaseClient
@@ -19,12 +21,15 @@ abstract class BaseClient
 
     private readonly RequestCache $cache;
 
+    private readonly RawQuery $raw;
+
     /** @var null|(Closure(string, string, callable(): mixed): mixed) */
     private ?Closure $profiler = null;
 
     public function __construct(public readonly Driver $driver)
     {
         $this->cache = new RequestCache();
+        $this->raw = new RawQuery($driver);
     }
 
     /**
@@ -131,6 +136,69 @@ abstract class BaseClient
         }
     }
 
+    /**
+     * Run a hand-written SELECT and return every row as an associative array.
+     *
+     * `$shape` maps result columns to Tehilim type tags — `int`, `BigInt`,
+     * `float`, `bool`, `string`, `bytes`, `DateTime`, `json`, `mixed`, each
+     * optionally prefixed with `?` for nullable (see {@see RawShape::TYPES}).
+     * When a shape is given, every listed column is cast through the driver
+     * (so `DateTime` comes back as DateTimeImmutable, `bool` as bool, …) and
+     * the row is reduced to exactly those columns; a listed column missing
+     * from the result set throws. The bundled PHPStan extension reads a
+     * literal `$shape` and narrows the return type to `list<array{...}>`:
+     *
+     *     $rows = $db->queryRaw(
+     *         'SELECT u.id, COUNT(p.id) AS posts FROM "User" u LEFT JOIN "Post" p ON p."authorId" = u.id GROUP BY u.id',
+     *         [],
+     *         ['id' => 'int', 'posts' => 'int'],
+     *     );
+     *     // PHPStan: list<array{id: int, posts: int}>
+     *
+     * Without a shape rows are returned exactly as PDO fetched them and the
+     * static type stays `list<array<string,mixed>>`.
+     *
+     * Bind values are passed to PDO as-is except bool and DateTimeInterface,
+     * which are normalized through the driver like generated-client writes.
+     * Positional (`?`) and named (`:name`) placeholders both work.
+     *
+     * @param array<string,mixed>|list<mixed> $params
+     * @param array<string,string>            $shape
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function queryRaw(string $sql, array $params = [], array $shape = []): array
+    {
+        RawShape::validate($shape);
+
+        return $this->profile('queryRaw', $sql, function () use ($sql, $params, $shape): array {
+            $rows = $this->raw->fetchAll($sql, $params);
+            if ($shape === []) {
+                return $rows;
+            }
+            $out = [];
+            foreach ($rows as $row) {
+                $out[] = RawShape::castRow($this->driver, $shape, $row);
+            }
+
+            return $out;
+        });
+    }
+
+    /**
+     * Run a hand-written statement that does not return rows (INSERT /
+     * UPDATE / DELETE / DDL) and return the affected row count. Flushes the
+     * request cache first, like every other write through this client.
+     *
+     * @param array<string,mixed>|list<mixed> $params
+     */
+    public function executeRaw(string $sql, array $params = []): int
+    {
+        $this->flushCache();
+
+        return $this->profile('executeRaw', $sql, fn (): int => $this->raw->execute($sql, $params));
+    }
+
     public function modelClient(string $name): BaseModelClient
     {
         return $this->clients[$name]
@@ -141,6 +209,22 @@ abstract class BaseClient
     {
         $this->clients[$name] = $client;
         $client->bindRoot($this);
+    }
+
+    /**
+     * @template T
+     *
+     * @param callable(): T $fn
+     *
+     * @return T
+     */
+    private function profile(string $op, string $label, callable $fn): mixed
+    {
+        if ($this->profiler === null) {
+            return $fn();
+        }
+
+        return ($this->profiler)('tehilim.' . $op, $label, $fn);
     }
 
     private function safeRollback(): void

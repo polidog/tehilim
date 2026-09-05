@@ -317,6 +317,20 @@ final class {$name} extends BaseModelClient
     }
 
     /**
+     * Run a hand-written SELECT that yields {$name} rows. Known columns are
+     * cast to their schema types; extra columns are passed through but are
+     * invisible to PHPStan — use `\$db->queryRaw(\$sql, \$params, \$shape)`
+     * for ad-hoc projections (joins, aggregates).
+     *
+     * @param list<mixed>|array<string,mixed> \$params
+     * @return list<{$name}Row>
+     */
+    public function queryRaw(string \$sql, array \$params = []): array
+    {
+        return \$this->narrowRows(\$this->doQueryRaw(\$sql, \$params));
+    }
+
+    /**
      * @param array<string,mixed> \$row
      * @return {$name}Row
      */

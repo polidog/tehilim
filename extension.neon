@@ -3,3 +3,10 @@ services:
         class: Polidog\Tehilim\PHPStan\FindSelectReturnTypeExtension
         tags:
             - phpstan.broker.dynamicMethodReturnTypeExtension
+    -
+        class: Polidog\Tehilim\PHPStan\QueryRawReturnTypeExtension
+        tags:
+            - phpstan.broker.dynamicMethodReturnTypeExtension
+
+rules:
+    - Polidog\Tehilim\PHPStan\QueryRawShapeRule
